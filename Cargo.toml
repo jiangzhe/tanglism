@@ -1,0 +1,11 @@
+[package]
+name = "tanglism"
+version = "0.1.0"
+authors = ["jiangzhe <zhe.jiang@transwarp.io>"]
+edition = "2018"
+keywords = ["tanglism", "quant"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/jiangzhe/tanglism"
+
+[dependencies]
