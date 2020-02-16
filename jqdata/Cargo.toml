@@ -13,4 +13,7 @@ workspace = ".."
 reqwest = { version = "0.10", features = ["json", "blocking"] }
 serde_json = "1.0"
 serde = "1.0"
+serde_derive = "1.0"
+csv = "1.1"
+mockito = "0.23"
 

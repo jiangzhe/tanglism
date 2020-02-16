@@ -1,13 +1,14 @@
-pub mod error;
 pub mod cli;
+pub mod error;
+pub mod model;
 
 pub use cli::JqdataClient;
 pub use error::Error;
 
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
-use serde::{Serializer, Serialize, Deserializer, Deserialize};
-use serde::de::{self, Visitor};
 
 pub enum Unit {
     U1m,
@@ -42,9 +43,9 @@ impl Unit {
 }
 
 impl Serialize for Unit {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> 
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: Serializer, 
+        S: Serializer,
     {
         match *self {
             Unit::U1m => serializer.serialize_str("1m"),
@@ -90,7 +91,7 @@ impl<'de> Visitor<'de> for UnitVisitor {
 impl<'de> Deserialize<'de> for Unit {
     fn deserialize<D>(deserializer: D) -> Result<Unit, D::Error>
     where
-        D: Deserializer<'de>
+        D: Deserializer<'de>,
     {
         deserializer.deserialize_str(UnitVisitor)
     }

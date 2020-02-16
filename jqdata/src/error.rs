@@ -1,5 +1,5 @@
-use std::fmt;
 use serde::de;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
@@ -7,6 +7,8 @@ pub enum Error {
     Server(String),
     Client(String),
     Serde(String),
+    Csv(csv::Error),
+    Json(serde_json::Error),
 }
 
 impl fmt::Display for Error {
@@ -16,6 +18,8 @@ impl fmt::Display for Error {
             Error::Server(ref s) => write!(f, "Server error: {}", s),
             Error::Client(ref s) => write!(f, "Client error: {}", s),
             Error::Serde(ref s) => write!(f, "Serde error: {}", s),
+            Error::Csv(ref err) => write!(f, "Csv error: {}", err),
+            Error::Json(ref err) => write!(f, "Json error: {}", err),
         }
     }
 }
@@ -24,9 +28,11 @@ impl std::error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Reqwest(ref err) => err.description(),
-            Error::Server(ref s) => s, 
-            Error::Client(ref s) => s, 
+            Error::Server(ref s) => s,
+            Error::Client(ref s) => s,
             Error::Serde(ref s) => s,
+            Error::Csv(ref err) => err.description(),
+            Error::Json(ref err) => err.description(),
         }
     }
 
@@ -36,6 +42,8 @@ impl std::error::Error for Error {
             Error::Server(..) => None,
             Error::Client(..) => None,
             Error::Serde(..) => None,
+            Error::Csv(ref err) => Some(err),
+            Error::Json(ref err) => Some(err),
         }
     }
 }
@@ -46,9 +54,22 @@ impl From<reqwest::Error> for Error {
     }
 }
 
+impl From<csv::Error> for Error {
+    fn from(err: csv::Error) -> Error {
+        Error::Csv(err)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Error {
+        Error::Json(err)
+    }
+}
+
 impl de::Error for Error {
-    fn custom<T>(msg: T) -> Self 
-    where T: fmt::Display,
+    fn custom<T>(msg: T) -> Self
+    where
+        T: fmt::Display,
     {
         Error::Serde(format!("{}", msg))
     }
