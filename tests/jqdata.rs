@@ -8,7 +8,10 @@ fn json_serialize() {
         "mob": mob,
         "pass": pass,
     });
-    assert_eq!(r#"{"mob":"00000000000","pass":"password"}"#, &json.to_string());
+    assert_eq!(
+        r#"{"mob":"00000000000","pass":"password"}"#,
+        &json.to_string()
+    );
 }
 
 #[test]

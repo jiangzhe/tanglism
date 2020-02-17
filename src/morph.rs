@@ -1,5 +1,5 @@
 //! Morphology of tanglism
-//! 
+//!
 //! this module defines several important concepts in morphology of tanglism
 //! Parting
 //! Line
@@ -7,17 +7,17 @@
 //! Pivot
 //! Trend
 
-use crate::{TTimestamp, TPrice, TQuantity};
-use serde::{Serialize, Deserialize};
+use crate::{TPrice, TQuantity, TTimestamp};
+use serde::{Deserialize, Serialize};
 
 /// Parting is composed of three k lines.
-/// 
+///
 /// Suppose three lines are k1, k2, k3.
 /// And their top prices and bottom prices are named t1, b1, t2, b2, t3, b3
-/// 
+///
 /// The definition of TopParting is: t1 < t2 && t3 < t2 && b1 < b2 && b3 < b2.
 /// Then we call the three k lines compose a TopParting, abbr top.
-/// 
+///
 /// The defnition of BottomParting is: t1 > t2 && t3 > t2 && b1 > b2 && b3 > b2.
 /// Then we call the three k lines compose a BottomParting, abbr bottom.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +31,7 @@ pub struct Parting {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PartingKind {
-    Top, 
+    Top,
     Bottom,
 }
 

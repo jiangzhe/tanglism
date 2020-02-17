@@ -1,16 +1,16 @@
 use crate::error::Error;
 use crate::model::JqdataCommand;
-use reqwest::header::{HeaderValue, CONTENT_TYPE};
-use serde_json::json;
 #[cfg(test)]
 use mockito;
+use reqwest::header::{HeaderValue, CONTENT_TYPE};
+use serde_json::json;
 
-///#[cfg(not(test))]
-///fn jqdata_url() -> &'static str {
-///    "https://dataapi.joinquant.com/apis"
-///}
+#[cfg(not(test))]
+fn jqdata_url() -> String {
+    String::from("https://dataapi.joinquant.com/apis")
+}
 
-/// #[cfg(test)]
+#[cfg(test)]
 fn jqdata_url() -> String {
     mockito::server_url()
 }
@@ -64,7 +64,7 @@ impl JqdataClient {
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(req_body)
             .send()?;
-        let output = command.consume_response_body(response)?;
+        let output = command.response_body(response)?;
         Ok(output)
     }
 }

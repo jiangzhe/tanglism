@@ -1,36 +1,40 @@
 use crate::error::Error;
-use serde_json::json;
 use reqwest::blocking::Response;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::str::FromStr;
 
+/// RequestCommand
+/// 
+/// define how to generate request body
 pub trait RequestCommand {
     // generate request body, with given token
     fn request_body(&self, token: &str) -> Result<String, Error>;
 }
 
 /// JqdataCommand
-/// 
-/// defines how to generate request body and handle response body
+///
+/// defines how to handle response body
 pub trait JqdataCommand: RequestCommand {
     type Output;
-    // parse response body into proper data structure
-    fn consume_response_body(&self, response: Response) -> Result<Self::Output, Error>;
+    // response is consumed, and the parsed output is returned
+    fn response_body(&self, response: Response) -> Result<Self::Output, Error>;
 }
 
 // csv consuming function
 fn consume_csv<T>(response: &mut Response) -> Result<Vec<T>, Error>
-    where for<'de> T: Deserialize<'de>,
+where
+    for<'de> T: Deserialize<'de>,
 {
-        let mut reader = csv::ReaderBuilder::new()
-            .has_headers(true)
-            .from_reader(response);
-        let mut rs = Vec::new();
-        for r in reader.deserialize() {
-            let s: T = r?;
-            rs.push(s);
-        }
-        Ok(rs)
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(response);
+    let mut rs = Vec::new();
+    for r in reader.deserialize() {
+        let s: T = r?;
+        rs.push(s);
+    }
+    Ok(rs)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -75,6 +79,7 @@ impl FromStr for TimeUnit {
     }
 }
 
+/// kind of security
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SecurityKind {
@@ -100,12 +105,7 @@ pub enum SecurityKind {
     Options,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetAllSecurities {
-    pub code: SecurityKind,
-    pub date: Option<String>,
-}
-
+/// security model
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Security {
     pub code: String,
@@ -116,6 +116,15 @@ pub struct Security {
     #[serde(rename = "type")]
     pub kind: SecurityKind,
     pub parent: Option<String>,
+}
+
+/// all requests are defined below
+
+/// 获取平台支持的所有股票、基金、指数、期货信息
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetAllSecurities {
+    pub code: SecurityKind,
+    pub date: Option<String>,
 }
 
 impl RequestCommand for GetAllSecurities {
@@ -132,7 +141,30 @@ impl RequestCommand for GetAllSecurities {
 
 impl JqdataCommand for GetAllSecurities {
     type Output = Vec<Security>;
-    fn consume_response_body(&self, mut response: Response) -> Result<Vec<Security>, Error> {
+    fn response_body(&self, mut response: Response) -> Result<Vec<Security>, Error> {
+        consume_csv(&mut response)
+    }
+}
+
+/// 获取股票/基金/指数的信息
+pub struct GetSecurityInfo {
+    pub code: String,
+}
+
+impl RequestCommand for GetSecurityInfo {
+    fn request_body(&self, token: &str) -> Result<String, Error> {
+        let json = serde_json::to_string(&json!({
+            "method": "get_security_info",
+            "token": token,
+            "code": self.code,
+        }))?;
+        Ok(json)
+    }
+}
+
+impl JqdataCommand for GetSecurityInfo {
+    type Output = Vec<Security>;
+    fn response_body(&self, mut response: Response) -> Result<Vec<Security>, Error> {
         consume_csv(&mut response)
     }
 }
@@ -162,15 +194,20 @@ mod tests {
 
     #[test]
     fn test_get_all_securities() {
-        let gas = GetAllSecurities{code: SecurityKind::Stock, date: Some(String::from("2020-02-16"))};
-        assert_eq!(serde_json::to_string(&json!({
-            "method": "get_all_securities",
-            "token": "abc",
-            "code": "stock",
-            "date": "2020-02-16",
-        })).unwrap(), gas.request_body("abc").unwrap());
-        
-        
+        let gas = GetAllSecurities {
+            code: SecurityKind::Stock,
+            date: Some(String::from("2020-02-16")),
+        };
+        assert_eq!(
+            serde_json::to_string(&json!({
+                "method": "get_all_securities",
+                "token": "abc",
+                "code": "stock",
+                "date": "2020-02-16",
+            }))
+            .unwrap(),
+            gas.request_body("abc").unwrap()
+        );
     }
 
     fn assert_serde_security_kind(s: &str, k: &SecurityKind) {

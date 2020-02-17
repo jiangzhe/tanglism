@@ -1,5 +1,5 @@
 [package]
-name = "jqdata"
+name = "jqdata-macro"
 version = "0.1.0"
 authors = ["jiangzhe <zhe.jiang@transwarp.io>"]
 edition = "2018"
@@ -10,10 +10,9 @@ repository = "https://github.com/jiangzhe/tanglism/jqdata"
 workspace = ".."
 
 [dependencies]
-reqwest = { version = "0.10", features = ["json", "blocking"] }
-serde_json = "1.0"
-serde = "1.0"
-serde_derive = "1.0"
-csv = "1.1"
-mockito = "0.23"
-jqdata-macro = { path = "../jqdata-macro" }
+syn = "1.0"
+quote = "1.0"
+proc-macro2 = "1.0.8"
+
+[lib]
+proc_macro = true
