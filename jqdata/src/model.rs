@@ -1,16 +1,78 @@
 use crate::error::Error;
-//use serde::{Serialize, Deserialize};
-use serde_derive::*;
 use serde_json::json;
 use reqwest::blocking::Response;
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
-pub trait JqdataCommand {
-    type Output;
+pub trait RequestCommand {
     // generate request body, with given token
     fn request_body(&self, token: &str) -> Result<String, Error>;
+}
 
+/// JqdataCommand
+/// 
+/// defines how to generate request body and handle response body
+pub trait JqdataCommand: RequestCommand {
+    type Output;
     // parse response body into proper data structure
-    fn handle_response_body(&self, response: Response) -> Result<Self::Output, Error>;
+    fn consume_response_body(&self, response: Response) -> Result<Self::Output, Error>;
+}
+
+// csv consuming function
+fn consume_csv<T>(response: &mut Response) -> Result<Vec<T>, Error>
+    where for<'de> T: Deserialize<'de>,
+{
+        let mut reader = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_reader(response);
+        let mut rs = Vec::new();
+        for r in reader.deserialize() {
+            let s: T = r?;
+            rs.push(s);
+        }
+        Ok(rs)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum TimeUnit {
+    #[serde(rename = "1m")]
+    U1m,
+    #[serde(rename = "5m")]
+    U5m,
+    #[serde(rename = "15m")]
+    U15m,
+    #[serde(rename = "30m")]
+    U30m,
+    #[serde(rename = "60m")]
+    U60m,
+    #[serde(rename = "120m")]
+    U120m,
+    #[serde(rename = "1d")]
+    U1d,
+    #[serde(rename = "1w")]
+    U1w,
+    // 1M is not included for simplicity
+    // U1M,
+}
+
+/// enable parse string to time unit
+impl FromStr for TimeUnit {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "1m" => Ok(TimeUnit::U1m),
+            "5m" => Ok(TimeUnit::U5m),
+            "15m" => Ok(TimeUnit::U15m),
+            "30m" => Ok(TimeUnit::U30m),
+            "60m" => Ok(TimeUnit::U60m),
+            "120m" => Ok(TimeUnit::U120m),
+            "1d" => Ok(TimeUnit::U1d),
+            "1w" => Ok(TimeUnit::U1w),
+            // "1M" => Ok(TimeUnit::U1M),
+            _ => Err(Error::Client(format!("invalid time unit: {}", s))),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,14 +100,13 @@ pub enum SecurityKind {
     Options,
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetAllSecurities {
     pub code: SecurityKind,
     pub date: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Security {
     pub code: String,
     pub display_name: String,
@@ -57,9 +118,7 @@ pub struct Security {
     pub parent: Option<String>,
 }
 
-impl JqdataCommand for GetAllSecurities {
-    type Output = Vec<Security>;
-
+impl RequestCommand for GetAllSecurities {
     fn request_body(&self, token: &str) -> Result<String, Error> {
         let json = serde_json::to_string(&json!({
             "method": "get_all_securities",
@@ -69,18 +128,14 @@ impl JqdataCommand for GetAllSecurities {
         }))?;
         Ok(json)
     }
-
-    fn handle_response_body(&self, mut response: Response) -> Result<Self::Output, Error> {
-        let mut reader = csv::Reader::from_reader(&mut response);
-        let mut rs = Vec::new();
-        for r in reader.deserialize() {
-            let s: Security = r?;
-            rs.push(s);
-        }
-        Ok(rs)
-    }
 }
 
+impl JqdataCommand for GetAllSecurities {
+    type Output = Vec<Security>;
+    fn consume_response_body(&self, mut response: Response) -> Result<Vec<Security>, Error> {
+        consume_csv(&mut response)
+    }
+}
 
 #[cfg(test)]
 mod tests {

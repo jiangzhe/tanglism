@@ -5,14 +5,14 @@ use serde_json::json;
 #[cfg(test)]
 use mockito;
 
-#[cfg(not(test))]
-fn jqdata_url() -> &'static str {
-    "https://dataapi.joinquant.com/apis"
-}
+///#[cfg(not(test))]
+///fn jqdata_url() -> &'static str {
+///    "https://dataapi.joinquant.com/apis"
+///}
 
-#[cfg(test)]
-fn jqdata_url() -> &'static str {
-    &mockito::server_url()
+/// #[cfg(test)]
+fn jqdata_url() -> String {
+    mockito::server_url()
 }
 
 pub struct JqdataClient {
@@ -33,7 +33,7 @@ fn get_token(mob: &str, pwd: &str, reuse: bool) -> Result<String, Error> {
     });
     let client = reqwest::blocking::Client::new();
     let response = client
-        .post(jqdata_url())
+        .post(&jqdata_url())
         .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
         .body(token_req.to_string())
         .send()?;
@@ -57,15 +57,14 @@ impl JqdataClient {
     }
 
     pub fn execute<C: JqdataCommand>(&self, command: C) -> Result<C::Output, Error> {
-
         let req_body = command.request_body(&self.token)?;
         let client = reqwest::blocking::Client::new();
         let response = client
-            .post(jqdata_url())
+            .post(&jqdata_url())
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(req_body)
             .send()?;
-        let output = command.handle_response_body(response)?;
+        let output = command.consume_response_body(response)?;
         Ok(output)
     }
 }
