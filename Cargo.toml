@@ -9,11 +9,11 @@ readme = "README.md"
 repository = "https://github.com/jiangzhe/tanglism"
 
 [workspace]
-members = ["jqdata"]
+members = ["jqdata", "jqdata-derive"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-jqdata = { path = "jqdata" }
 reqwest = { version = "0.10", features = ["json", "blocking"] }
 mockito = "0.23"
+jqdata = { version = "0.1.0", path = "./jqdata" }

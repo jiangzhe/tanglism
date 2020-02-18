@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::model::JqdataCommand;
+use crate::model::{Request, Response};
 #[cfg(test)]
 use mockito;
 use reqwest::header::{HeaderValue, CONTENT_TYPE};
@@ -56,15 +56,83 @@ impl JqdataClient {
         })
     }
 
-    pub fn execute<C: JqdataCommand>(&self, command: C) -> Result<C::Output, Error> {
-        let req_body = command.request_body(&self.token)?;
+    pub fn execute<C: Request + Response>(&self, command: C) -> Result<C::Output, Error> {
+        let req_body = command.request(&self.token)?;
         let client = reqwest::blocking::Client::new();
         let response = client
             .post(&jqdata_url())
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(req_body)
             .send()?;
-        let output = command.response_body(response)?;
+        let output = command.response(response)?;
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::*;
+    use mockito::mock;
+
+    #[test]
+    fn test_error_response() {
+        let response_body = "error: invalid token";
+        let _m = mock("POST", "/")
+            .with_status(200)
+            .with_body(response_body)
+            .create();
+        
+        let client = JqdataClient::with_token("abc").unwrap();
+        let response = client.execute(GetAllSecurities{
+            code: SecurityKind::Stock,
+            date: None,
+        });
+        assert!(response.is_err());
+    }
+
+    #[test]
+    fn test_get_all_securities() {
+        let response_body = {
+            let mut s = String::from("code,display_name,name,start_date,end_date,type\n");
+            s.push_str("000001.XSHE,平安银行,PAYH,1991-04-03,2200-01-01,stock\n");
+            s.push_str("000002.XSHE,万科A,WKA,1991-01-29,2200-01-01,stock\n");
+            s
+        };
+        let _m = mock("POST", "/")
+            .with_status(200)
+            .with_body(&response_body)
+            .create();
+
+        let client = JqdataClient::with_token("abc").unwrap();
+        let ss = client
+            .execute(GetAllSecurities {
+                code: SecurityKind::Stock,
+                date: None,
+            })
+            .unwrap();
+        assert_eq!(
+            vec![
+                Security {
+                    code: "000001.XSHE".to_string(),
+                    display_name: "平安银行".to_string(),
+                    name: "PAYH".to_string(),
+                    start_date: "1991-04-03".to_string(),
+                    end_date: "2200-01-01".to_string(),
+                    kind: SecurityKind::Stock,
+                    parent: None,
+                },
+                Security {
+                    code: "000002.XSHE".to_string(),
+                    display_name: "万科A".to_string(),
+                    name: "WKA".to_string(),
+                    start_date: "1991-01-29".to_string(),
+                    end_date: "2200-01-01".to_string(),
+                    kind: SecurityKind::Stock,
+                    parent: None,
+                }
+            ],
+            ss
+        );
     }
 }

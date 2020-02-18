@@ -1,5 +1,5 @@
 [package]
-name = "jqdata-macro"
+name = "jqdata-derive"
 version = "0.1.0"
 authors = ["jiangzhe <zhe.jiang@transwarp.io>"]
 edition = "2018"

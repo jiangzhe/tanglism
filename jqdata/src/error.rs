@@ -9,6 +9,7 @@ pub enum Error {
     Serde(String),
     Csv(csv::Error),
     Json(serde_json::Error),
+    Io(std::io::Error),
 }
 
 impl fmt::Display for Error {
@@ -20,23 +21,13 @@ impl fmt::Display for Error {
             Error::Serde(ref s) => write!(f, "Serde error: {}", s),
             Error::Csv(ref err) => write!(f, "Csv error: {}", err),
             Error::Json(ref err) => write!(f, "Json error: {}", err),
+            Error::Io(ref err) => write!(f, "Io error: {}", err),
         }
     }
 }
 
 impl std::error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::Reqwest(ref err) => err.description(),
-            Error::Server(ref s) => s,
-            Error::Client(ref s) => s,
-            Error::Serde(ref s) => s,
-            Error::Csv(ref err) => err.description(),
-            Error::Json(ref err) => err.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn std::error::Error> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match *self {
             Error::Reqwest(ref err) => Some(err),
             Error::Server(..) => None,
@@ -44,6 +35,7 @@ impl std::error::Error for Error {
             Error::Serde(..) => None,
             Error::Csv(ref err) => Some(err),
             Error::Json(ref err) => Some(err),
+            Error::Io(ref err) => Some(err),
         }
     }
 }
@@ -66,6 +58,14 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Error {
+        Error::Io(err)
+    }
+}
+
+/// when deserailizing, the serde framework requires
+/// the ability to convert local error to serde::de::Error
 impl de::Error for Error {
     fn custom<T>(msg: T) -> Self
     where
