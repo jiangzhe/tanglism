@@ -149,6 +149,12 @@ fn derive_response_for_struct(ast: &syn::DeriveInput) -> proc_macro2::TokenStrea
             let ty: syn::Type = syn::parse_str("Vec<String>").unwrap();
             (cb, ty)
         },
+        "single" => {
+            let cb = quote! { crate::model::consume_single(&mut response) };
+            let ty = ty.expect("type must be set in response attribute when format is single");
+            let ty: syn::Type = syn::parse_str(&ty).expect("invalid type in response attribute");
+            (cb, ty)
+        }
         "json" => {
             let cb = quote! { crate::model::consume_json(&mut response) };
             let ty = ty.expect("type must be set in response attribute when format is json");

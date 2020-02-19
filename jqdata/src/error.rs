@@ -10,6 +10,7 @@ pub enum Error {
     Csv(csv::Error),
     Json(serde_json::Error),
     Io(std::io::Error),
+    Utf8(std::str::Utf8Error),
 }
 
 impl fmt::Display for Error {
@@ -22,6 +23,7 @@ impl fmt::Display for Error {
             Error::Csv(ref err) => write!(f, "Csv error: {}", err),
             Error::Json(ref err) => write!(f, "Json error: {}", err),
             Error::Io(ref err) => write!(f, "Io error: {}", err),
+            Error::Utf8(ref err) => write!(f, "Utf8 error: {}", err),
         }
     }
 }
@@ -36,6 +38,7 @@ impl std::error::Error for Error {
             Error::Csv(ref err) => Some(err),
             Error::Json(ref err) => Some(err),
             Error::Io(ref err) => Some(err),
+            Error::Utf8(ref err) => Some(err),
         }
     }
 }
@@ -61,6 +64,18 @@ impl From<serde_json::Error> for Error {
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Error {
         Error::Io(err)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(err: std::string::FromUtf8Error) -> Error {
+        Error::Utf8(err.utf8_error())
+    }
+}
+
+impl From<std::num::ParseIntError> for Error {
+    fn from(err: std::num::ParseIntError) -> Error {
+        Error::Server(format!("{}", err))
     }
 }
 

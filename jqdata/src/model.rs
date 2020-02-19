@@ -63,6 +63,15 @@ pub(crate) fn consume_line(
     Ok(rs)
 }
 
+// single result consuming function, used by derive macro
+pub(crate) fn consume_single<T>(response: &mut reqwest::blocking::Response) -> Result<T, Error> where T: FromStr, Error: From<T::Err> {
+    let mut vec = Vec::new();
+    std::io::copy(response, &mut vec)?;
+    let s = String::from_utf8(vec)?;
+    let result = s.parse::<T>()?;
+    Ok(result)
+}
+
 // json consuming function, used by derive macro
 #[allow(dead_code)]
 pub(crate) fn consume_json<T>(response: &mut reqwest::blocking::Response) -> Result<T, Error>
@@ -152,7 +161,6 @@ pub struct Security {
     pub end_date: String,
     #[serde(rename = "type")]
     pub kind: SecurityKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
 }
 
@@ -164,7 +172,6 @@ pub struct Security {
 #[response(format = "csv", type = "Security")]
 pub struct GetAllSecurities {
     pub code: SecurityKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
 }
 
@@ -528,6 +535,286 @@ pub struct FundInfo {
     pub heavy_hold_bond: Vec<String>,
     pub heavy_hold_bond_proportion: f64,
 }
+
+/// 获取最新的 tick 数据
+/// 参数：
+/// code: 标的代码， 支持股票、指数、基金、期货等。 不可以使用主力合约和指数合约代码。
+/// 返回：
+/// time: 时间
+/// current: 当前价
+/// high: 截至到当前时刻的日内最高价
+/// low: 截至到当前时刻的日内最低价
+/// volume: 累计成交量
+/// money: 累计成交额
+/// position: 持仓量，期货使用
+/// a1_v~a5_v: 五档卖量
+/// a1_p~a5_p: 五档卖价
+/// b1_v~b5_v: 五档买量
+/// b1_p~b5_p: 五档买价
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_current_tick)]
+#[response(format = "csv", type = "Tick")]
+pub struct GetCurrentTick {
+    pub code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Tick {
+    pub time: f64,
+    pub current: f64,
+    pub high: f64,
+    pub low: f64,
+    pub volumn: f64,
+    pub money: f64,
+    pub position: f64,
+    pub a1_v: f64,
+    pub a2_v: f64,
+    pub a3_v: f64,
+    pub a4_v: f64,
+    pub a5_v: f64,
+    pub a1_p: f64,
+    pub a2_p: f64,
+    pub a3_p: f64,
+    pub a4_p: f64,
+    pub a5_p: f64,
+    pub b1_v: f64,
+    pub b2_v: f64,
+    pub b3_v: f64,
+    pub b4_v: f64,
+    pub b5_v: f64,
+    pub b1_p: f64,
+    pub b2_p: f64,
+    pub b3_p: f64,
+    pub b4_p: f64,
+    pub b5_p: f64,
+}
+
+/// 获取多标的最新的 tick 数据
+/// 参数：
+/// code: 标的代码， 多个标的使用,分隔。每次请求的标的必须是相同类型。标的类型包括： 股票、指数、场内基金、期货、期权
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_current_ticks)]
+#[response(format = "csv", type = "Tick")]
+pub struct GetCurrentTicks {
+    pub code: String,
+}
+
+/// 获取基金净值/期货结算价等
+/// 参数：
+/// code: 证券代码
+/// date: 开始日期
+/// end_date: 结束日期
+/// 返回：
+/// date: 日期
+/// is_st: 是否是ST，是则返回 1，否则返回 0。股票使用
+/// acc_net_value: 基金累计净值。基金使用
+/// unit_net_value: 基金单位净值。基金使用
+/// futures_sett_price: 期货结算价。期货使用
+/// futures_positions: 期货持仓量。期货使用
+/// adj_net_value: 场外基金的复权净值。场外基金使用
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_extras)]
+#[response(format = "csv", type = "Extra")]
+pub struct GetExtras {
+    pub code: String,
+    pub date: String,
+    pub end_date: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Extra {
+    pub date: String,
+    pub is_st: Option<i8>,
+    pub acc_net_value: Option<f64>,
+    pub unit_net_value: Option<f64>,
+    pub futures_sett_price: Option<f64>,
+    pub futures_positions: Option<f64>,
+    pub adj_net_value: Option<f64>,
+}
+
+/// 获取各种时间周期的bar数据，bar的分割方式与主流股票软件相同， 同时还支持返回当前时刻所在 bar 的数据。get_price 与 get_bars 合并为一个函数
+/// 参数：
+/// code: 证券代码
+/// count: 大于0的整数，表示获取bar的条数，不能超过5000
+/// unit: bar的时间单位, 支持如下周期：1m, 5m, 15m, 30m, 60m, 120m, 1d, 1w, 1M。其中m表示分钟，d表示天，w表示周，M表示月
+/// end_date：查询的截止时间，默认是今天
+/// fq_ref_date：复权基准日期，该参数为空时返回不复权数据
+/// 返回：
+/// date: 日期
+/// open: 开盘价
+/// close: 收盘价
+/// high: 最高价
+/// low: 最低价
+/// volume: 成交量
+/// money: 成交额
+/// 当unit为1d时，包含以下返回值:
+/// paused: 是否停牌，0 正常；1 停牌
+/// high_limit: 涨停价
+/// low_limit: 跌停价
+/// avg: 当天均价
+/// pre_close：前收价
+/// 当code为期货和期权时，包含以下返回值:
+/// open_interest 持仓量
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_price)]
+#[response(format = "csv", type = "Price")]
+pub struct GetPrice {
+    pub date: String,
+    pub count: u32,
+    pub unit: TimeUnit,
+    pub end_date: Option<String>,
+    pub fq_ref_date: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Price {
+    pub date: String,
+    pub open: f64,
+    pub close: f64,
+    pub high: f64,
+    pub low: f64,
+    pub volume: f64,
+    pub money: f64,
+    pub paused: Option<u8>,
+    pub high_limit: Option<f64>,
+    pub low_limit: Option<f64>,
+    pub avg: Option<f64>,
+    pub pre_close: Option<f64>,
+    pub open_interest: Option<f64>,
+}
+
+/// 指定开始时间date和结束时间end_date时间段，获取行情数据
+/// 参数：
+/// code: 证券代码
+/// unit: bar的时间单位, 支持如下周期：1m, 5m, 15m, 30m, 60m, 120m, 1d, 1w, 1M。其中m表示分钟，d表示天，w表示周，M表示月
+/// date: 开始时间，不能为空，格式2018-07-03或2018-07-03 10:40:00，如果是2018-07-03则默认为2018-07-03 00:00:00
+/// end_date：结束时间，不能为空，格式2018-07-03或2018-07-03 10:40:00，如果是2018-07-03则默认为2018-07-03 23:59:00
+/// fq_ref_date：复权基准日期，该参数为空时返回不复权数据
+/// 注：当unit是1w或1M时，第一条数据是开始时间date所在的周或月的行情。当unit为分钟时，第一条数据是开始时间date所在的一个unit切片的行情。
+/// 最大获取1000个交易日数据
+/// 返回：
+/// date: 日期
+/// open: 开盘价
+/// close: 收盘价
+/// high: 最高价
+/// low: 最低价
+/// volume: 成交量
+/// money: 成交额
+/// 当unit为1d时，包含以下返回值:
+/// paused: 是否停牌，0 正常；1 停牌
+/// high_limit: 涨停价
+/// low_limit: 跌停价
+/// 当code为期货和期权时，包含以下返回值:
+/// open_interest 持仓量
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_price_period)]
+#[response(format = "csv", type = "Price")]
+pub struct GetPricePeriod {
+    pub code: String,
+    pub unit: TimeUnit,
+    pub date: String,
+    pub end_date: String,
+    pub fq_ref_date: Option<String>,
+}
+
+/// 获取tick数据
+/// 股票部分， 支持 2010-01-01 至今的tick数据，提供买五卖五数据
+/// 期货部分， 支持 2010-01-01 至今的tick数据，提供买一卖一数据。 如果要获取主力合约的tick数据，可以先使用get_dominant_future获取主力合约对应的标的
+/// 期权部分，支持 2017-01-01 至今的tick数据，提供买五卖五数据
+/// 参数：
+/// code: 证券代码
+/// count: 取出指定时间区间内前多少条的tick数据，如不填count，则返回end_date一天内的全部tick
+/// end_date: 结束日期，格式2018-07-03或2018-07-03 10:40:00
+/// skip: 默认为true，过滤掉无成交变化的tick数据；
+/// 当skip=false时，返回的tick数据会保留从2019年6月25日以来无成交有盘口变化的tick数据。
+/// 由于期权成交频率低，所以建议请求期权数据时skip设为false
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_ticks)]
+#[response(format = "csv", type = "Tick")]
+pub struct GetTicks {
+    pub code: String,
+    pub count: Option<u32>,
+    pub end_date: String,
+    pub skip: bool,
+}
+
+/// 按时间段获取tick数据
+/// 股票部分， 支持 2010-01-01 至今的tick数据，提供买五卖五数据
+/// 期货部分， 支持 2010-01-01 至今的tick数据，提供买一卖一数据。 如果要获取主力合约的tick数据，可以先使用get_dominant_future获取主力合约对应的标的
+/// 期权部分，支持 2017-01-01 至今的tick数据，提供买五卖五数据
+/// 参数：
+/// code: 证券代码
+/// date: 开始时间，格式2018-07-03或2018-07-03 10:40:00
+/// end_date: 结束时间，格式2018-07-03或2018-07-03 10:40:00
+/// skip: 默认为true，过滤掉无成交变化的tick数据；
+/// 当skip=false时，返回的tick数据会保留从2019年6月25日以来无成交有盘口变化的tick数据。
+/// 注：
+/// 如果时间跨度太大、数据量太多则可能导致请求超时，所有请控制好data-end_date之间的间隔！
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_ticks_period)]
+#[response(format = "csv", type = "Tick")]
+pub struct GetTicksPeriod {
+    pub code: String,
+    pub date: String,
+    pub end_date: String,
+    pub skip: bool,
+}
+
+/// 获取因子值的 API，点击查看因子列表
+/// 参数：
+/// code: 单只股票代码
+/// columns: 因子名称，因子名称，多个因子用逗号分隔
+/// date: 开始日期
+/// end_date: 结束日期
+/// 返回：
+/// date：日期
+/// 查询因子值
+/// 注：
+/// 为保证数据的连续性，所有数据基于后复权计算
+/// 为了防止单次返回数据时间过长，尽量较少查询的因子数和时间段
+/// 如果第一次请求超时，尝试重试
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(get_factor_values)]
+#[response(format = "csv", type = "FactorValue")]
+pub struct GetFactorValues {
+    pub code: String,
+    pub columns: String,
+    pub date: String,
+    pub end_date: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FactorValue {
+    pub date: String,
+    pub cfo_to_ev: Option<f64>,
+    pub net_profit_ratio: Option<f64>,
+}
+
+/// 模拟JQDataSDK的run_query方法
+/// run_query api 是模拟了JQDataSDK run_query方法获取财务、宏观、期权等数据
+/// 可查询的数据内容请查看JQData文档
+/// 以查询上市公司分红送股（除权除息）数据为例：
+/// 参数：
+/// table: 要查询的数据库和表名，格式为 database + . + tablename 如finance.STK_XR_XD
+/// columns: 所查字段，为空时则查询所有字段，多个字段中间用,分隔。如id,company_id，columns不能有空格等特殊字符
+/// conditions: 查询条件，可以为空，格式为report_date#>=#2006-12-01&report_date#<=#2006-12-31，条件内部#号分隔，格式： column # 判断符 # value，多个条件使用&号分隔，表示and，conditions不能有空格等特殊字符
+/// count: 查询条数，count为空时默认1条，最多查询1000条
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(run_query)]
+#[response(format = "line")]
+pub struct RunQuery {
+    pub table: String,
+    pub columns: String,
+    pub conditions: Option<String>,
+    pub count: Option<u32>,
+}
+
+/// 获取查询剩余条数
+#[derive(Debug, Serialize, Deserialize, Request, Response)]
+#[request(run_query)]
+#[response(format = "single", type = "i32")]
+pub struct GetQueryCount {}
+
 
 
 #[cfg(test)]
