@@ -1,6 +1,6 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use syn::{Token, DeriveInput, parse_macro_input};
+use syn::{DeriveInput, parse_macro_input};
 use quote::*;
 use proc_macro2;
 
@@ -16,11 +16,11 @@ pub fn derive_request(input: TokenStream) -> TokenStream {
 
 fn derive_request_for_struct(ast: &syn::DeriveInput, fields: &syn::Fields) -> proc_macro2::TokenStream {
     match *fields {
-        syn::Fields::Named(ref fields) => {
-            impl_request_for_struct(&ast, Some(&fields.named))
+        syn::Fields::Named(..) => {
+            impl_request_for_struct(&ast)
         },
         syn::Fields::Unit => {
-            impl_request_for_struct(&ast, None)
+            impl_request_for_struct(&ast)
         },
         syn::Fields::Unnamed(..) => {
             panic!("doesn't work with unnamed fields yet")
@@ -28,7 +28,7 @@ fn derive_request_for_struct(ast: &syn::DeriveInput, fields: &syn::Fields) -> pr
     }
 }
 
-fn impl_request_for_struct(ast: &syn::DeriveInput, fields: Option<&syn::punctuated::Punctuated<syn::Field, Token![,]>>) -> proc_macro2::TokenStream {
+fn impl_request_for_struct(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
     let struct_name = &ast.ident;
     
     let request_method = ast.attrs.iter().find_map(|attr| {
@@ -45,27 +45,22 @@ fn impl_request_for_struct(ast: &syn::DeriveInput, fields: Option<&syn::punctuat
         None
     }).expect("must have request attribute with method name");
 
-    let empty = Default::default();
-    let fields_kvs = fields.unwrap_or(&empty).iter().map(|f| {
-        let f_name = &f.ident;
-        let f_name_str = format!("{}", f_name.as_ref().unwrap());
-        quote!{
-            #f_name_str: self.#f_name
-        }
-    });
-
     let request_method_name = format!("{}", request_method);
 
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     quote! {
         impl #impl_generics crate::model::Request for #struct_name #ty_generics #where_clause {
             fn request(&self, token: &str) -> Result<String, crate::Error> {
-                let json = serde_json::to_string(&serde_json::json!({
-                    "method": #request_method_name,
-                    "token": token,
-                    #(#fields_kvs),*
-                }))?;
-                Ok(json)
+                let orig_str = serde_json::to_string(&self)?;
+                let value: serde_json::Value = serde_json::from_str(&orig_str)?;
+                let mut obj = match value {
+                    serde_json::Value::Object(obj) => obj,
+                    _ => return Err(crate::Error::Client(format!("unexpected json value: {}", value))),
+                };
+                obj.insert("method".to_owned(), serde_json::Value::String(#request_method_name.to_owned()));
+                obj.insert("token".to_owned(), serde_json::Value::String(token.to_owned()));
+                let fnl_str = serde_json::to_string(&obj)?;
+                Ok(fnl_str)
             }
         }
     }

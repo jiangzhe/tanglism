@@ -4,7 +4,7 @@ use jqdata_derive::*;
 use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
 use serde_derive::*;
-use std::io::{Read, BufRead};
+use std::io::BufRead;
 use std::str::FromStr;
 
 /// Request
@@ -161,6 +161,7 @@ pub struct Security {
     pub end_date: String,
     #[serde(rename = "type")]
     pub kind: SecurityKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
 }
 
@@ -172,6 +173,7 @@ pub struct Security {
 #[response(format = "csv", type = "Security")]
 pub struct GetAllSecurities {
     pub code: SecurityKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
 }
 
@@ -198,6 +200,7 @@ pub struct GetIndexStocks {
 #[request(get_margincash_stocks)]
 #[response(format = "line")]
 pub struct GetMargincashStocks {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
 }
 
@@ -662,7 +665,9 @@ pub struct GetPrice {
     pub date: String,
     pub count: u32,
     pub unit: TimeUnit,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub end_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fq_ref_date: Option<String>,
 }
 
@@ -714,6 +719,7 @@ pub struct GetPricePeriod {
     pub unit: TimeUnit,
     pub date: String,
     pub end_date: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fq_ref_date: Option<String>,
 }
 
@@ -733,6 +739,7 @@ pub struct GetPricePeriod {
 #[response(format = "csv", type = "Tick")]
 pub struct GetTicks {
     pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<u32>,
     pub end_date: String,
     pub skip: bool,
@@ -805,7 +812,9 @@ pub struct FactorValue {
 pub struct RunQuery {
     pub table: String,
     pub columns: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub conditions: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub count: Option<u32>,
 }
 
