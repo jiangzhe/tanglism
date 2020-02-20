@@ -332,7 +332,8 @@ pub struct GetConceptStocks {
 #[response(format = "line")]
 pub struct GetTradeDays {
     pub date: String,
-    pub end_date: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date: Option<String>,
 }
 
 /// 获取所有交易日

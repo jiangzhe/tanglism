@@ -1,0 +1,16 @@
+[package]
+name = "jqdata-shell"
+version = "0.1.0"
+authors = ["Zhe Jiang <nju.jiangzhe@gmail.com>"]
+edition = "2018"
+
+[[bin]]
+name = "jqdata-shell"
+path = "src/main.rs"
+bench = false
+
+[dependencies]
+jqdata = { version = "0.1.0", path = "../jqdata" }
+structopt = "0.3"
+structopt-derive = "0.4"
+rusqlite = { version = "0.21", features = ["bundled"] }
