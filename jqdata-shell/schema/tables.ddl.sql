@@ -37,6 +37,28 @@ CREATE TABLE IF NOT EXISTS stock_prices_1d (
     pre_close REAL
 );
 
+CREATE TABLE IF NOT EXISTS stock_prices_30m (
+    code TEXT,
+    _date TEXT,
+    open REAL,
+    close REAL,
+    high REAL,
+    low REAL,
+    volume REAL,
+    money REAL
+);
+
+CREATE TABLE IF NOT EXISTS stock_prices_5m (
+    code TEXT,
+    _date TEXT,
+    open REAL,
+    close REAL,
+    high REAL,
+    low REAL,
+    volume REAL,
+    money REAL
+);
+
 CREATE TABLE IF NOT EXISTS stock_prices_1m (
     code TEXT,
     _date TEXT,
@@ -45,5 +67,5 @@ CREATE TABLE IF NOT EXISTS stock_prices_1m (
     high REAL,
     low REAL,
     volume REAL,
-    money REAL,
+    money REAL
 );
