@@ -22,3 +22,5 @@ Cargo.lock
 
 # exclude db file
 *.db
+
+web/data/

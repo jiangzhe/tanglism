@@ -82,49 +82,6 @@ where
     Ok(result)
 }
 
-// 时间周期
-#[derive(Debug, Serialize, Deserialize)]
-pub enum TimeUnit {
-    #[serde(rename = "1m")]
-    U1m,
-    #[serde(rename = "5m")]
-    U5m,
-    #[serde(rename = "15m")]
-    U15m,
-    #[serde(rename = "30m")]
-    U30m,
-    #[serde(rename = "60m")]
-    U60m,
-    #[serde(rename = "120m")]
-    U120m,
-    #[serde(rename = "1d")]
-    U1d,
-    #[serde(rename = "1w")]
-    U1w,
-    // 1M is not included for simplicity
-    // U1M,
-}
-
-/// enable parse string to time unit
-impl FromStr for TimeUnit {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "1m" => Ok(TimeUnit::U1m),
-            "5m" => Ok(TimeUnit::U5m),
-            "15m" => Ok(TimeUnit::U15m),
-            "30m" => Ok(TimeUnit::U30m),
-            "60m" => Ok(TimeUnit::U60m),
-            "120m" => Ok(TimeUnit::U120m),
-            "1d" => Ok(TimeUnit::U1d),
-            "1w" => Ok(TimeUnit::U1w),
-            // "1M" => Ok(TimeUnit::U1M),
-            _ => Err(Error::Client(format!("invalid time unit: {}", s))),
-        }
-    }
-}
-
 /// 证券类型
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -665,7 +622,7 @@ pub struct Extra {
 pub struct GetPrice {
     pub date: String,
     pub count: u32,
-    pub unit: TimeUnit,
+    pub unit: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_date: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -717,7 +674,7 @@ pub struct Price {
 #[response(format = "csv", type = "Price")]
 pub struct GetPricePeriod {
     pub code: String,
-    pub unit: TimeUnit,
+    pub unit: String,
     pub date: String,
     pub end_date: String,
     #[serde(skip_serializing_if = "Option::is_none")]

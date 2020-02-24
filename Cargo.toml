@@ -9,7 +9,7 @@ readme = "README.md"
 repository = "https://github.com/jiangzhe/tanglism"
 
 [workspace]
-members = ["jqdata", "jqdata-derive", "jqdata-shell"]
+members = ["jqdata", "jqdata-derive", "jqdata-shell", "tanglism-morph"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

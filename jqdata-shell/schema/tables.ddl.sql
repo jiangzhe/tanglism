@@ -29,12 +29,7 @@ CREATE TABLE IF NOT EXISTS stock_prices_1d (
     high REAL,
     low REAL,
     volume REAL,
-    money REAL,
-    paused INTEGER,
-    high_limit REAL,
-    low_limit REAL,
-    avg REAL,
-    pre_close REAL
+    money REAL
 );
 
 CREATE TABLE IF NOT EXISTS stock_prices_30m (
