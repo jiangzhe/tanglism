@@ -12,8 +12,3 @@ repository = "https://github.com/jiangzhe/tanglism"
 members = ["jqdata", "jqdata-derive", "jqdata-shell", "tanglism-morph"]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-reqwest = { version = "0.10", features = ["json", "blocking"] }
-mockito = "0.23"
-jqdata = { version = "0.1.0", path = "./jqdata" }

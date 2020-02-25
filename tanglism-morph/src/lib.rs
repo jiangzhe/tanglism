@@ -1,4 +1,10 @@
-use chrono::NaiveDatetime;
+mod synth;
+mod error;
+
+use chrono::NaiveDateTime;
+use serde::{Serialize, Deserialize};
+pub use error::Error;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// 分型
 /// 
@@ -14,11 +20,12 @@ use chrono::NaiveDatetime;
 /// 为新K线的低点。
 /// 按照缠论的严格定义，分型仅适用与最小级别的K线图，即1分钟K线图上，后续分析都由
 /// 1分钟K线图向上递归构成更大的形态。
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Parting {
     // 分型起始时刻，已考虑K线包含关系
-    pub start_ts: NaiveDatetime,
+    pub start_ts: NaiveDateTime,
     // 分型结束时刻，已考虑K线包含关系
-    pub end_ts: NaiveDatetime,
+    pub end_ts: NaiveDateTime,
     // 转折点价格
     pub g: f64,
     // 是否顶分型，非顶即底分型
@@ -30,10 +37,11 @@ pub struct Parting {
 /// 缠论的基础概念
 /// 由相邻的顶分型与底分型构成，不可同底或同顶，同时需满足两分型间有至少1根独立K线，
 /// 即存在1条K线，不属于两侧的分型，且不能因为包含原则属于两侧的分型。
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Stroke {
-    pub start_ts: NaiveDatetime,
+    pub start_ts: NaiveDateTime,
     pub start_price: f64,
-    pub end_ts: NaiveDatetime,
+    pub end_ts: NaiveDateTime,
     pub end_price: f64,
 }
 
@@ -49,13 +57,14 @@ pub struct Stroke {
 /// 顶分型的顶即向上线段的结束。
 /// 底分型的底即向下线段的结束。
 /// 当确定线段终点后，该终点后的笔不再归属于该线段。
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Segment {
     // 起始时刻
-    pub start_ts: NaiveDatetime,
+    pub start_ts: NaiveDateTime,
     // 起始价格
     pub start_price: f64,
     // 结束时刻
-    pub end_ts: NaiveDatetime,
+    pub end_ts: NaiveDateTime,
     // 结束价格
     pub end_price: f64,
     // 是否向上走势
@@ -68,13 +77,14 @@ pub struct Segment {
 /// 由至少3个存在重叠区间的次级别走势类型构成。
 /// 1分钟K线图中走势类型由线段代替。
 /// 即5分钟的中枢由至少3个1分钟级别的线段构成。
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Center {
     // 起始时刻
-    pub start_ts: NaiveDatetime,
+    pub start_ts: NaiveDateTime,
     // 起始价格
     pub start_price: f64,
     // 结束时刻
-    pub end_ts: NaiveDatetime,
+    pub end_ts: NaiveDateTime,
     // 结束价格
     pub end_price: f64,
     // 共享最低点，即所有次级别走势类型的最低点中的最高点
@@ -98,22 +108,23 @@ pub struct Center {
 /// 分为趋势和盘整
 /// 趋势由至少2个没有价格区间重叠的中枢构成，趋势向上则为上涨，趋势向下则为下跌
 /// 盘整由1个中枢构成
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Trend {
     // 起始时刻
-    pub start_ts: NaiveDatetime,
+    pub start_ts: NaiveDateTime,
     // 起始价格
     pub start_price: f64,
     // 结束时刻
-    pub end_ts: NaiveDatetime,
+    pub end_ts: NaiveDateTime,
     // 结束价格
     pub end_price: f64,
     // 中枢列表
     pub centers: Vec<Center>,
     // 级别
-    // 1 -> 5分钟线走势类型
-    // 2 -> 30分钟线走势类型
-    // 3 -> 日线走势类型
-    // 4 -> 周线走势类型
-    // 5 -> 月线走势类型
+    // 1 -> 近似5分钟线走势类型
+    // 2 -> 近似30分钟线走势类型
+    // 3 -> 近似日线走势类型
+    // 4 -> 近似周线走势类型
+    // 5 -> 近似月线走势类型
     pub level: u8,
 }
