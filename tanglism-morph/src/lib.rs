@@ -2,7 +2,7 @@ mod synth;
 mod error;
 
 use chrono::NaiveDateTime;
-use serde::{Serialize, Deserialize};
+use serde_derive::*;
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
