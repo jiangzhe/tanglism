@@ -49,17 +49,25 @@ pub struct SegmentSeq {
     pub undetermined_top: bool,
 }
 
-pub trait Synthesizer {
-    // 给定一组连续K线，合成相应的分型序列
-    fn init_pts(&mut self, ks: &[K]) -> Result<PotentialPartingSeq>;
+pub trait Shaper {
 
-    // 给定潜在分型序列，合成相应的笔序列
-    fn init_strokes(&mut self, pts: &PotentialPartingSeq) -> Result<StrokeSeq>;
+    // 使用一组连续K线初始化
+    fn init(&mut self, ks: &[K]) -> Result<()>;
 
-    fn init_segments(&mut self, sks: &[StrokeSeq]) -> Result<SegmentSeq>;
+    // 获取当前的分型序列
+    fn potential_parting_seq(&self) -> Option<&PotentialPartingSeq>;
+
+    // 获取当前的笔序列
+    fn stroke_seq(&self) -> Option<&StrokeSeq>;
+
+    // 获取当前的线段序列
+    fn segment_seq(&self) -> Option<&SegmentSeq>;
+
 }
 
-pub trait Appender<'a> {
-    // 添加最新K线，提供的K线必须满足与序列尾部K线延续
-    fn append_ks(&mut self, latest_ks: &[K]) -> Result<()>; 
+pub trait Appender: Shaper {
+
+    // 添加最新K线
+    fn append(&mut self, latest_ks: &[K]) -> Result<()>; 
 }
+

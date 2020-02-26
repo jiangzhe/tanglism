@@ -1,5 +1,6 @@
-mod synth;
 mod error;
+mod shape;
+mod trend;
 
 use chrono::NaiveDateTime;
 use serde_derive::*;
