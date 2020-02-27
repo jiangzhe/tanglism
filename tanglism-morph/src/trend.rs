@@ -1,8 +1,8 @@
-use crate::shape::{Shaper, Appender};
-use crate::{Result, Error};
+use crate::shape::{KShaper};
+use crate::{Result};
 
 pub trait Analyzer {
-    fn init<S: Shaper>(&mut self, shaper: S) -> Result<()>;
+    // fn init<S: KShaper>(&mut self, shaper: S) -> Result<()>;
 
 
 }
