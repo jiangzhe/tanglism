@@ -33,6 +33,7 @@ pub struct CK {
     pub low: f64,
     pub high: f64,
     pub n: i32,
+    pub indep_k: i32,
 }
 
 /// 分型
@@ -54,11 +55,13 @@ pub struct Parting {
     // 分型转折时刻
     pub extremum_ts: String,
     // 转折点价格
-    pub g: f64,
+    pub extremum_price: f64,
     // 组成分型的K线数
     pub n: i32,
     // 是否顶分型，非顶即底分型
     pub top: bool,
+    // 相邻的独立K线数
+    pub indep_k: i32,
 }
 
 /// 笔
