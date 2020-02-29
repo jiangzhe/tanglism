@@ -108,7 +108,7 @@ impl PartingShaper for MemShaper {
         for k in self.ks.iter() {
             // k1不存在
             if first_k.is_none() {
-                first_k = Some(k_to_ck(k, 0));
+                first_k = Some(k_to_ck(k));
                 continue;
             }
             // k1存在
@@ -120,7 +120,7 @@ impl PartingShaper for MemShaper {
                 match inclusive_neighbor_k(k1, k, upward) {
                     None => {
                         // 更新k2
-                        second_k = Some(k_to_ck(k, k1.indep_k + 1));
+                        second_k = Some(k_to_ck(k));
                         upward = k.high > k1.high;
                         continue;
                     }
@@ -146,26 +146,16 @@ impl PartingShaper for MemShaper {
                     continue;
                 }
                 // 检查k1, k2与k是否形成顶/底分型
-                if upward && k.low < k2.low {
-                    // 形成顶分型，更新k2和k3
-                    second_k.as_mut().unwrap().indep_k = 0;
-                    third_k = Some(k_to_ck(k, 0));
-                    upward = false;
+                if (upward && k.low < k2.low) || (!upward && k.high > k2.high) {
+                    // 形成顶/底分型，更新k2和k3
+                    third_k = Some(k_to_ck(k));
+                    upward = !upward;
                     continue;
                 }
 
-                if !upward && k.high > k2.high {
-                    // 形成底分型，更新k2和k3
-                    second_k.as_mut().unwrap().indep_k = 0;
-                    third_k = Some(k_to_ck(k, 0));
-                    upward = true;
-                    continue;
-                }
-
-                // 不形成顶/底分型时，将k1, k2, k平移一位，上升/下降方向不变，独立K线数不变
-                let indep_k = k2.indep_k + 1;
+                // 不形成顶/底分型时，将k1, k2, k平移一位，上升/下降方向不变
                 first_k = second_k.take();
-                second_k = Some(k_to_ck(k, indep_k));
+                second_k = Some(k_to_ck(k));
                 continue;
             }
 
@@ -187,17 +177,18 @@ impl PartingShaper for MemShaper {
                 extremum_price: if upward { k2.low } else { k2.high },
                 n: k1.n + k2.n + k3.n,
                 top: !upward,
-                indep_k: k1.indep_k,
             };
             pts.push(parting);
-            // 将k3平移到k1, 将k平移到k2，调整方向
-            second_k = Some(k_to_ck(k, 1));
+
+            // 将k3, k向左平移两位
             upward = k.high > k3.high;
-            first_k = third_k.take();
-            first_k.as_mut().unwrap().indep_k = 0;
+            first_k = Some(k3.clone());
+            second_k = Some(k_to_ck(k));
+            third_k = None;
             continue;
         }
         
+        // 结束所有k线分析后，依然存在第三根K线，说明此时三根K线刚好构成顶底分型
         if third_k.is_some() {
             let k1 = first_k.take().unwrap();
             let k2 = second_k.take().unwrap();
@@ -205,18 +196,20 @@ impl PartingShaper for MemShaper {
 
             let parting = Parting{
                 start_ts: k1.start_ts,
-                end_ts: k3.end_ts,
-                extremum_ts: k2.extremum_ts,
+                end_ts: k3.end_ts.clone(),
+                extremum_ts: k2.extremum_ts.clone(),
                 extremum_price: if upward { k2.low } else { k2.high },
                 n: k1.n + k2.n + k3.n,
                 top: !upward,
-                indep_k: k1.indep_k,
             };
             pts.push(parting);
+            // 向左平移k2和k3
+            first_k = Some(k2);
+            second_k = Some(k3);
         }
         
         let mut tail = vec![];
-
+        // 将剩余k线加入尾部，必定不会出现三根K线
         if first_k.is_some() {
             tail.push(first_k.unwrap());
         }
@@ -232,9 +225,9 @@ impl PartingShaper for MemShaper {
     }
 }
 
-fn k_to_ck(k: &K, indep_k: i32) -> CK {
+fn k_to_ck(k: &K) -> CK {
     CK{start_ts: k.ts.clone(), end_ts: k.ts.clone(), extremum_ts: k.ts.clone(), 
-        high: k.high, low: k.low, n: 1, indep_k}
+        high: k.high, low: k.low, n: 1}
 }
 
 fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
@@ -249,14 +242,13 @@ fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
     let start_ts = k1.start_ts.clone();
     let end_ts = k2.ts.clone();
     let n = k1.n + 1;
-    let indep_k = k1.indep_k;
 
     let (high, low) = if upward {
         (if k1.high > k2.high {k1.high} else {k2.high}, if k1.low > k2.low {k1.low} else {k2.low})
     } else {
         (if k1.high < k2.high {k1.high} else {k2.high}, if k1.low < k2.low {k1.low} else {k2.low})
     };
-    Some(CK{start_ts, end_ts, extremum_ts, high, low, n, indep_k})
+    Some(CK{start_ts, end_ts, extremum_ts, high, low, n})
 }
 
 
@@ -318,8 +310,51 @@ mod tests {
         // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         // panic!(json);
         assert_eq!(1, r.pts.len());
-        assert_eq!(0, r.tail.len());
+        assert_eq!(2, r.tail.len());
         assert_eq!("2020-02-01 10:04:00", &r.pts[0].end_ts);
+        Ok(())
+    }
+
+    #[test]
+    fn test_shaper_two_partings() -> Result<()> {
+        let shaper = init_shaper(vec![
+            new_k("2020-02-01 10:00:00", 10.10, 10.00),
+            new_k("2020-02-01 10:01:00", 10.15, 10.05),
+            new_k("2020-02-01 10:02:00", 10.20, 10.10),
+            new_k("2020-02-01 10:03:00", 10.15, 10.05),
+            new_k("2020-02-01 10:04:00", 10.20, 10.10),
+        ])?;
+        let r = shaper.parting_seq().unwrap();
+        assert_eq!(2, r.pts.len());
+        assert_eq!("2020-02-01 10:01:00", &r.pts[0].start_ts);
+        assert_eq!("2020-02-01 10:03:00", &r.pts[0].end_ts);
+        assert_eq!(true, r.pts[0].top);
+        assert_eq!("2020-02-01 10:02:00", &r.pts[1].start_ts);
+        assert_eq!("2020-02-01 10:04:00", &r.pts[1].end_ts);
+        assert_eq!(false, r.pts[1].top);
+        assert_eq!(2, r.tail.len());
+        Ok(())
+    }
+
+    #[test]
+    fn test_shaper_two_indep_partings() -> Result<()> {
+        let shaper = init_shaper(vec![
+            new_k("2020-02-01 10:00:00", 10.10, 10.00),
+            new_k("2020-02-01 10:01:00", 10.15, 10.05),
+            new_k("2020-02-01 10:02:00", 10.20, 10.10),
+            new_k("2020-02-01 10:03:00", 10.15, 10.05),
+            new_k("2020-02-01 10:04:00", 10.10, 10.00),
+            new_k("2020-02-01 10:05:00", 10.05,  9.95),
+            new_k("2020-02-01 10:06:00", 10.00,  9.90),
+            new_k("2020-02-01 10:07:00", 10.05,  9.95),
+        ])?;
+        let r = shaper.parting_seq().unwrap();
+        // todo: fix assertion
+        assert_eq!(2, r.pts.len());
+        assert_eq!("2020-02-01 10:01:00", &r.pts[0].start_ts);
+        assert_eq!("2020-02-01 10:03:00", &r.pts[0].end_ts);
+        assert_eq!("2020-02-01 10:05:00", &r.pts[1].start_ts);
+        assert_eq!("2020-02-01 10:07:00", &r.pts[1].end_ts);
         Ok(())
     }
 
