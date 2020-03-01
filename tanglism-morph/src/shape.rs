@@ -63,14 +63,14 @@ pub trait SegmentShaper: StrokeShaper {
 }
 
 pub struct MemShaper {
-    pub ks: Vec<K>,
-    pub pts: Option<PartingSeq>,
-    pub sks: Option<StrokeSeq>,
-    pub sgs: Option<SegmentSeq>,
+    ks: Vec<K>,
+    pts: Option<PartingSeq>,
+    sks: Option<StrokeSeq>,
+    sgs: Option<SegmentSeq>,
 }
 
 impl MemShaper {
-    fn new() -> Self {
+    pub fn new() -> Self {
         MemShaper{
             ks: Vec::new(),
             pts: None,
@@ -94,6 +94,7 @@ impl KShaper for MemShaper {
     }
 }
 
+/// 分型处理的实现
 impl PartingShaper for MemShaper {
     fn init_pts(&mut self) -> Result<()> {
         if self.ks.is_empty() {
@@ -185,7 +186,6 @@ impl PartingShaper for MemShaper {
             first_k = Some(k3.clone());
             second_k = Some(k_to_ck(k));
             third_k = None;
-            continue;
         }
         
         // 结束所有k线分析后，依然存在第三根K线，说明此时三根K线刚好构成顶底分型
@@ -225,11 +225,20 @@ impl PartingShaper for MemShaper {
     }
 }
 
+/// 
+// impl StrokeShaper for MemShaper {
+//     fn init_sks(&mut self) -> Result<()> {
+
+//     }
+// }
+
+/// 辅助函数，将单个K线转化为合并K线
 fn k_to_ck(k: &K) -> CK {
     CK{start_ts: k.ts.clone(), end_ts: k.ts.clone(), extremum_ts: k.ts.clone(), 
         high: k.high, low: k.low, n: 1}
 }
 
+/// 辅助函数，判断相邻K线是否符合包含关系，并在符合情况下返回包含后的合并K线
 fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
     let extremum_ts = if k1.high >= k2.high && k1.low <= k2.low {
         k1.extremum_ts.clone()
@@ -250,7 +259,6 @@ fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
     };
     Some(CK{start_ts, end_ts, extremum_ts, high, low, n})
 }
-
 
 
 
@@ -349,7 +357,6 @@ mod tests {
             new_k("2020-02-01 10:07:00", 10.05,  9.95),
         ])?;
         let r = shaper.parting_seq().unwrap();
-        // todo: fix assertion
         assert_eq!(2, r.pts.len());
         assert_eq!("2020-02-01 10:01:00", &r.pts[0].start_ts);
         assert_eq!("2020-02-01 10:03:00", &r.pts[0].end_ts);

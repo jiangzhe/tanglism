@@ -9,6 +9,6 @@ readme = "README.md"
 repository = "https://github.com/jiangzhe/tanglism"
 
 [workspace]
-members = ["jqdata", "jqdata-derive", "jqdata-shell", "tanglism-morph"]
+members = ["jqdata", "jqdata-derive", "jqdata-shell", "tanglism-morph", "tanglism-web"]
 
 [dependencies]

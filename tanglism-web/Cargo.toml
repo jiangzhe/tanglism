@@ -1,0 +1,17 @@
+[package]
+name = "tanglism-web"
+version = "0.1.0"
+authors = ["Zhe Jiang <nju.jiangzhe@gmail.com>"]
+edition = "2018"
+workspace = ".."
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-web = "2"
+actix-rt = "1"
+actix-files = "0.2"
+actix-session = "0.3"
+actix-utils = "1"
+futures = "0.3"
+env_logger = "0.7"
+bytes = "0.5"
