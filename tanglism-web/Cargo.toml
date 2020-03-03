@@ -7,11 +7,15 @@ workspace = ".."
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+actix = "0.9"
 actix-web = "2"
 actix-rt = "1"
 actix-files = "0.2"
 actix-session = "0.3"
 actix-utils = "1"
+actix-web-actors = "2"
 futures = "0.3"
 env_logger = "0.7"
 bytes = "0.5"
+derive_more = "0.99"
+
