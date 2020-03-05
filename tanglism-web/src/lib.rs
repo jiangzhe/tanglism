@@ -1,20 +1,23 @@
-mod routes;
+mod errors;
 mod handlers;
 mod helpers;
-mod errors;
+mod routes;
 
-use std::{env, io, net};
-use actix_web::{middleware, HttpServer, App};
-use actix_session::CookieSession;
-use actix_cors::Cors;
-use actix::prelude::*;
 use crate::routes::routes;
+use actix::prelude::*;
+use actix_cors::Cors;
+use actix_session::CookieSession;
+use actix_web::{middleware, App, HttpServer};
+use std::{env, io, net};
+
+pub use errors::Error;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct Message(pub String);
 
-pub async fn server() -> io::Result<()> {
+pub async fn server(port: u32) -> std::io::Result<()> {
     env::set_var("RUST_LOG", "actix_web=debug,actix_server=info");
     env_logger::init();
 
@@ -25,7 +28,7 @@ pub async fn server() -> io::Result<()> {
             .wrap(middleware::Logger::default())
             .configure(routes)
     })
-    .bind("127.0.0.1:8080")?
+    .bind(format!("127.0.0.1:{}", port))?
     .run()
     .await
 }

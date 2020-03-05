@@ -25,4 +25,7 @@ derive_more = "0.99"
 serde = "1.0"
 serde_derive = "1.0"
 actix-cors = "0.2"
-
+tanglism-morph = { version = "0.1.0", path = "../tanglism-morph" }
+jqdata-shell = { version = "0.1.0", path = "../jqdata-shell" }
+structopt = "0.3"
+rusqlite = { version = "0.21", features = ["bundled"] }
