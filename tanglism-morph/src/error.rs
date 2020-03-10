@@ -9,7 +9,6 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-
 #[cfg(test)]
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Error {

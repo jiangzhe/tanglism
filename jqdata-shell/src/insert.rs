@@ -1,7 +1,7 @@
+use crate::datetime::{DatetimeProcessor, DatetimeRange};
 use crate::{code_autocomplete, request_datetime, Error, Result};
 use jqdata::JqdataClient;
 use rusqlite::{params, Connection, ToSql};
-use crate::datetime::{DatetimeProcessor, DatetimeRange};
 
 type InsertResult = Result<u64>;
 
@@ -15,7 +15,7 @@ pub struct TradeDayInserter {
 impl TradeDayInserter {
     pub fn new(conn: Connection, cli: JqdataClient) -> Self {
         let dtp = DatetimeProcessor::new("1d").unwrap();
-        TradeDayInserter{conn, cli, dtp}
+        TradeDayInserter { conn, cli, dtp }
     }
 
     pub fn insert(&mut self, from: Option<String>, to: Option<String>) -> InsertResult {
@@ -30,30 +30,33 @@ impl TradeDayInserter {
         };
         // no gap is allowed
         if dt_range.min_after(&to)? {
-            return Err(Error(format!("gap not allowed, existing min={}, to={}", dt_range.min(), to)));
+            return Err(Error(format!(
+                "gap not allowed, existing min={}, to={}",
+                dt_range.min(),
+                to
+            )));
         }
         if dt_range.max_before(&from)? {
-            return Err(Error(format!("gap not allowed, existing max={}, from={}", dt_range.max(), from)));
+            return Err(Error(format!(
+                "gap not allowed, existing max={}, from={}",
+                dt_range.max(),
+                from
+            )));
         }
         let mut inserted = 0;
         if dt_range.min_after(&from)? {
-            inserted += self.fetch_and_insert(
-                &from,
-                &self.dtp.prev(&dt_range.min())?,
-            )?;
+            inserted += self.fetch_and_insert(&from, &self.dtp.prev(&dt_range.min())?)?;
         }
         if dt_range.max_before(&to)? {
-            inserted += self.fetch_and_insert(
-                &self.dtp.next(&dt_range.max())?,
-                &to,
-            )?;
+            inserted += self.fetch_and_insert(&self.dtp.next(&dt_range.max())?, &to)?;
         }
         Ok(inserted)
     }
 
     fn datetime_range(&self) -> Result<Option<DatetimeRange>> {
-        let mut stmt =
-            self.conn.prepare("SELECT MIN(_date) as min_date, MAX(_date) as max_date FROM trade_days")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT MIN(_date) as min_date, MAX(_date) as max_date FROM trade_days")?;
         let mut rows = stmt.query(params![])?;
         if let Some(row) = rows.next()? {
             if row.get_raw(0) == rusqlite::types::ValueRef::Null {
@@ -140,25 +143,25 @@ impl PricePeriodInserter {
         };
         // no gap is allowed
         if dt_range.min_after(&to)? {
-            return Err(Error(format!("gap not allowed, existing min={}, to={}", dt_range.min(), to)));
+            return Err(Error(format!(
+                "gap not allowed, existing min={}, to={}",
+                dt_range.min(),
+                to
+            )));
         }
         if dt_range.max_before(&from)? {
-            return Err(Error(format!("gap not allowed, existing max={}, from={}", dt_range.max(), from)));
+            return Err(Error(format!(
+                "gap not allowed, existing max={}, from={}",
+                dt_range.max(),
+                from
+            )));
         }
         let mut inserted = 0;
         if dt_range.min_after(&from)? {
-            inserted += self.fetch_and_insert(
-                &code,
-                &from,
-                &self.dtp.prev(&dt_range.min())?,
-            )?;
+            inserted += self.fetch_and_insert(&code, &from, &self.dtp.prev(&dt_range.min())?)?;
         }
         if dt_range.max_before(&to)? {
-            inserted += self.fetch_and_insert(
-                &code,
-                &self.dtp.next(&dt_range.max())?,
-                &to,
-            )?;
+            inserted += self.fetch_and_insert(&code, &self.dtp.next(&dt_range.max())?, &to)?;
         }
         Ok(inserted)
     }
@@ -212,13 +215,11 @@ impl PricePeriodInserter {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use crate::{Error, Result};
-    use rusqlite::{Connection, OpenFlags};
     use chrono::NaiveDate;
+    use rusqlite::{Connection, OpenFlags};
 
     #[test]
     fn test_sqlite_batch() -> Result<()> {
@@ -229,5 +230,4 @@ mod tests {
 
         Ok(())
     }
-
 }

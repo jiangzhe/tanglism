@@ -6,12 +6,26 @@ edition = "2018"
 workspace = ".."
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "tanglism-web"
+path = "./src/main.rs"
+
 [dependencies]
+actix = "0.9"
 actix-web = "2"
 actix-rt = "1"
 actix-files = "0.2"
 actix-session = "0.3"
 actix-utils = "1"
+actix-web-actors = "2"
 futures = "0.3"
 env_logger = "0.7"
 bytes = "0.5"
+derive_more = "0.99"
+serde = "1.0"
+serde_derive = "1.0"
+actix-cors = "0.2"
+tanglism-morph = { version = "0.1.0", path = "../tanglism-morph" }
+jqdata-shell = { version = "0.1.0", path = "../jqdata-shell" }
+structopt = "0.3"
+rusqlite = { version = "0.21", features = ["bundled"] }

@@ -1,35 +1,31 @@
-use std::{env, io};
-use actix_web::{get, web, guard, middleware, App, HttpResponse, HttpServer, Responder, Result};
-use actix_web::http::{header, Method, StatusCode};
-use actix_files as fs;
-use actix_session::{CookieSession, Session};
+use rusqlite::{Connection, OpenFlags};
+use structopt::StructOpt;
+use tanglism_web::{server, Error, Result};
 
 #[actix_rt::main]
-async fn main() -> std::io::Result<()> {
-    env::set_var("RUST_LOG", "actix_web=debug,actix_server=info");
-    env_logger::init();
+async fn main() -> Result<()> {
+    let opt = Opt::from_args();
+    let mut conn = Connection::open_with_flags(opt.dbfile, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
 
-    HttpServer::new(|| {
-        App::new()
-            .wrap(CookieSession::signed(&[0; 32]).secure(false))
-            .wrap(middleware::Logger::default())
-            .service(index)
-            .default_service(
-                web::resource("")
-                    .route(web::get().to(p404))
-                    .route(web::route().guard(guard::Not(guard::Get())).to(HttpResponse::MethodNotAllowed)))
-    })
-    .bind("127.0.0.1:8080")?
-    .run()
-    .await
+    let _stopped = server(opt.port).await?;
+    Ok(())
 }
 
-#[get("/")]
-async fn index() -> Result<fs::NamedFile> {
-    Ok(fs::NamedFile::open("static/index.html")?)
+#[derive(Debug, StructOpt)]
+#[structopt(name = "tanglism-web", about = "command to run tanglism web server")]
+pub struct Opt {
+    #[structopt(
+        short,
+        long,
+        help = "specify server port to listen, by default 8080",
+        default_value = "8080"
+    )]
+    port: u32,
+    #[structopt(
+        short,
+        long,
+        help = "specify dbfile to use",
+        default_value = "./jqdata.db"
+    )]
+    dbfile: String,
 }
-
-async fn p404() -> Result<fs::NamedFile> {
-    Ok(fs::NamedFile::open("static/404.html")?.set_status_code(StatusCode::NOT_FOUND))
-}
-

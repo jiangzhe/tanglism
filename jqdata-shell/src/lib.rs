@@ -1,11 +1,12 @@
+mod datetime;
 mod error;
 mod insert;
 mod select;
-mod datetime;
 pub use error::Error;
 pub use insert::*;
 pub use select::*;
 pub type Result<T> = std::result::Result<T, Error>;
+pub use datetime::parse_ts_from_str;
 
 // autocomplete stock code,
 // support 600, 601, 603, 000, 002, 300
