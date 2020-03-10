@@ -1,6 +1,6 @@
 use jqdata::JqdataClient;
 use jqdata_shell::Error;
-use jqdata_shell::{TradeDayInserter, select_price_period_1d, PricePeriodInserter};
+use jqdata_shell::{select_price_period_1d, PricePeriodInserter, TradeDayInserter};
 use rusqlite::{Connection, OpenFlags};
 use structopt::StructOpt;
 

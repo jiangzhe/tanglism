@@ -82,9 +82,9 @@ mod tests {
             .with_status(200)
             .with_body(response_body)
             .create();
-        
+
         let client = JqdataClient::with_token("abc").unwrap();
-        let response = client.execute(GetAllSecurities{
+        let response = client.execute(GetAllSecurities {
             code: SecurityKind::Stock,
             date: None,
         });

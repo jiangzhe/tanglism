@@ -64,7 +64,11 @@ pub(crate) fn consume_line(
 }
 
 // single result consuming function, used by derive macro
-pub(crate) fn consume_single<T>(response: &mut reqwest::blocking::Response) -> Result<T, Error> where T: FromStr, Error: From<T::Err> {
+pub(crate) fn consume_single<T>(response: &mut reqwest::blocking::Response) -> Result<T, Error>
+where
+    T: FromStr,
+    Error: From<T::Err>,
+{
     let mut vec = Vec::new();
     std::io::copy(response, &mut vec)?;
     let s = String::from_utf8(vec)?;
@@ -75,7 +79,7 @@ pub(crate) fn consume_single<T>(response: &mut reqwest::blocking::Response) -> R
 // json consuming function, used by derive macro
 #[allow(dead_code)]
 pub(crate) fn consume_json<T>(response: &mut reqwest::blocking::Response) -> Result<T, Error>
-where 
+where
     for<'de> T: Deserialize<'de>,
 {
     let result = serde_json::from_reader(response)?;
@@ -426,7 +430,6 @@ pub struct BillboardStock {
     pub amount: f64,
 }
 
-
 /// 获取某期货品种在指定日期下的可交易合约标的列表
 /// 参数：
 /// code: 期货合约品种，如 AG (白银)
@@ -438,7 +441,6 @@ pub struct GetFutureContracts {
     pub code: String,
     pub date: String,
 }
-
 
 /// 获取主力合约对应的标的
 /// 参数：
@@ -782,8 +784,6 @@ pub struct RunQuery {
 #[response(format = "single", type = "i32")]
 pub struct GetQueryCount {}
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -831,5 +831,4 @@ mod tests {
         assert_eq!(str_repr, serde_json::to_string(k).unwrap());
         assert_eq!(k, &serde_json::from_str::<SecurityKind>(&str_repr).unwrap());
     }
-
 }
