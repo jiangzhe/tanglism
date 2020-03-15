@@ -68,10 +68,8 @@ pub struct Parting {
 /// 即存在1条K线，不属于两侧的分型，且不能因为包含原则属于两侧的分型。
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Stroke {
-    pub start_ts: NaiveDateTime,
-    pub start_price: f64,
-    pub end_ts: NaiveDateTime,
-    pub end_price: f64,
+    pub start_pt: Parting,
+    pub end_pt: Parting,
 }
 
 /// 线段
