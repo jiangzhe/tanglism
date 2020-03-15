@@ -1,5 +1,6 @@
 use chrono::prelude::*;
 use crate::{Result, Error};
+use std::sync::Arc;
 
 const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M";
 const DATE_FORMAT: &str = "%Y-%m-%d";
@@ -101,12 +102,12 @@ const BITS_ONE: u64 = 1u64;
 type Bits = u64;
 
 lazy_static! {
-    pub static ref LOCAL_TRADING_DATE_BITMAP: TradingDateBitmap = {
+    pub static ref LOCAL_TRADING_DATE_BITMAP: Arc<TradingDateBitmap> = {
         let mut tdbm = TradingDateBitmap::empty();
         for d in tanglism_data::LOCAL_TRADE_DAYS.iter() {
             tdbm.add_day_str(d);
         }
-        tdbm
+        Arc::new(tdbm)
     };
 }
 
@@ -135,7 +136,7 @@ impl TradingDateBitmap {
     }
 
     fn ensure_capacity(&mut self, capacity: usize) {
-        let buckets = (capacity + BITS - 1) / BITS;
+        let buckets = capacity / BITS + 1;
         if self.bm.len() < buckets {
             for _i in self.bm.len()..buckets {
                 self.bm.push(0);
@@ -147,6 +148,7 @@ impl TradingDateBitmap {
         self.ensure_capacity(idx);
         let bucket_id = idx / BITS;
         let bit_pos = idx % BITS;
+        // println!("{}, {}, {}", self.bm.len(), bucket_id, idx);
         self.bm[bucket_id] |= BITS_ONE << bit_pos;
     }
 

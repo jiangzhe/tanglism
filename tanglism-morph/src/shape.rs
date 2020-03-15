@@ -282,7 +282,9 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             });
         }
         let mut pts_iter = self.pts.body.iter();
-        self.start = Some(pts_iter.next().unwrap().clone());
+        let first = pts_iter.next().unwrap().clone();
+        self.start = Some(first.clone());
+        self.tail.push(first);
         while let Some(pt) = pts_iter.next() {
             self.consume(pt);
         }
@@ -370,39 +372,41 @@ mod tests {
     use super::*;
     use crate::K;
     use chrono::NaiveDateTime;
+    use tanglism_utils::LOCAL_TRADING_TS_1_MIN;
+
     #[test]
     fn test_shaper_no_parting() -> Result<()> {
         let ks = vec![
-            new_k("2020-02-01 10:00:00", 10.10, 10.00),
-            new_k("2020-02-01 10:01:00", 10.15, 10.05),
-            new_k("2020-02-01 10:02:00", 10.20, 10.10),
-            new_k("2020-02-01 10:03:00", 10.25, 10.15),
-            new_k("2020-02-01 10:04:00", 10.30, 10.20),
+            new_k("2020-02-01 10:00", 10.10, 10.00),
+            new_k("2020-02-01 10:01", 10.15, 10.05),
+            new_k("2020-02-01 10:02", 10.20, 10.10),
+            new_k("2020-02-01 10:03", 10.25, 10.15),
+            new_k("2020-02-01 10:04", 10.30, 10.20),
         ];
         // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         let r = ks_to_pts(&ks)?;
         assert_eq!(0, r.body.len());
         assert_eq!(2, r.tail.len());
-        assert_eq!(new_ts("2020-02-01 10:03:00"), r.tail[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:04:00"), r.tail[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03"), r.tail[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:04"), r.tail[1].start_ts);
         Ok(())
     }
 
     #[test]
     fn test_shaper_one_parting() -> Result<()> {
         let ks = vec![
-            new_k("2020-02-01 10:00:00", 10.10, 10.00),
-            new_k("2020-02-01 10:01:00", 10.15, 10.05),
-            new_k("2020-02-01 10:02:00", 10.20, 10.10),
-            new_k("2020-02-01 10:03:00", 10.15, 10.05),
-            new_k("2020-02-01 10:04:00", 10.10, 10.00),
+            new_k("2020-02-01 10:00", 10.10, 10.00),
+            new_k("2020-02-01 10:01", 10.15, 10.05),
+            new_k("2020-02-01 10:02", 10.20, 10.10),
+            new_k("2020-02-01 10:03", 10.15, 10.05),
+            new_k("2020-02-01 10:04", 10.10, 10.00),
         ];
         let r = ks_to_pts(&ks)?;
         assert_eq!(1, r.body.len());
         assert_eq!(2, r.tail.len());
-        assert_eq!(new_ts("2020-02-01 10:01:00"), r.body[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:03:00"), r.body[0].end_ts);
-        assert_eq!(new_ts("2020-02-01 10:02:00"), r.body[0].extremum_ts);
+        assert_eq!(new_ts("2020-02-01 10:01"), r.body[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03"), r.body[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:02"), r.body[0].extremum_ts);
         assert_eq!(10.20, r.body[0].extremum_price);
         assert_eq!(true, r.body[0].top);
         Ok(())
@@ -411,37 +415,37 @@ mod tests {
     #[test]
     fn test_shaper_one_parting_inclusive() -> Result<()> {
         let ks = vec![
-            new_k("2020-02-01 10:00:00", 10.10, 10.00),
-            new_k("2020-02-01 10:01:00", 10.15, 10.05),
-            new_k("2020-02-01 10:02:00", 10.20, 10.10),
-            new_k("2020-02-01 10:03:00", 10.15, 10.05),
-            new_k("2020-02-01 10:04:00", 10.20, 10.00),
+            new_k("2020-02-01 10:00", 10.10, 10.00),
+            new_k("2020-02-01 10:01", 10.15, 10.05),
+            new_k("2020-02-01 10:02", 10.20, 10.10),
+            new_k("2020-02-01 10:03", 10.15, 10.05),
+            new_k("2020-02-01 10:04", 10.20, 10.00),
         ];
         let r = ks_to_pts(&ks)?;
         // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         // panic!(json);
         assert_eq!(1, r.body.len());
         assert_eq!(2, r.tail.len());
-        assert_eq!(new_ts("2020-02-01 10:04:00"), r.body[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:04"), r.body[0].end_ts);
         Ok(())
     }
 
     #[test]
     fn test_shaper_two_partings() -> Result<()> {
         let ks = vec![
-            new_k("2020-02-01 10:00:00", 10.10, 10.00),
-            new_k("2020-02-01 10:01:00", 10.15, 10.05),
-            new_k("2020-02-01 10:02:00", 10.20, 10.10),
-            new_k("2020-02-01 10:03:00", 10.15, 10.05),
-            new_k("2020-02-01 10:04:00", 10.20, 10.10),
+            new_k("2020-02-01 10:00", 10.10, 10.00),
+            new_k("2020-02-01 10:01", 10.15, 10.05),
+            new_k("2020-02-01 10:02", 10.20, 10.10),
+            new_k("2020-02-01 10:03", 10.15, 10.05),
+            new_k("2020-02-01 10:04", 10.20, 10.10),
         ];
         let r = ks_to_pts(&ks)?;
         assert_eq!(2, r.body.len());
-        assert_eq!(new_ts("2020-02-01 10:01:00"), r.body[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:03:00"), r.body[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:01"), r.body[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03"), r.body[0].end_ts);
         assert_eq!(true, r.body[0].top);
-        assert_eq!(new_ts("2020-02-01 10:02:00"), r.body[1].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:04:00"), r.body[1].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:02"), r.body[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:04"), r.body[1].end_ts);
         assert_eq!(false, r.body[1].top);
         assert_eq!(2, r.tail.len());
         Ok(())
@@ -450,22 +454,124 @@ mod tests {
     #[test]
     fn test_shaper_two_indep_partings() -> Result<()> {
         let ks = vec![
-            new_k("2020-02-01 10:00:00", 10.10, 10.00),
-            new_k("2020-02-01 10:01:00", 10.15, 10.05),
-            new_k("2020-02-01 10:02:00", 10.20, 10.10),
-            new_k("2020-02-01 10:03:00", 10.15, 10.05),
-            new_k("2020-02-01 10:04:00", 10.10, 10.00),
-            new_k("2020-02-01 10:05:00", 10.05, 9.95),
-            new_k("2020-02-01 10:06:00", 10.00, 9.90),
-            new_k("2020-02-01 10:07:00", 10.05, 9.95),
+            new_k("2020-02-01 10:00", 10.10, 10.00),
+            new_k("2020-02-01 10:01", 10.15, 10.05),
+            new_k("2020-02-01 10:02", 10.20, 10.10),
+            new_k("2020-02-01 10:03", 10.15, 10.05),
+            new_k("2020-02-01 10:04", 10.10, 10.00),
+            new_k("2020-02-01 10:05", 10.05, 9.95),
+            new_k("2020-02-01 10:06", 10.00, 9.90),
+            new_k("2020-02-01 10:07", 10.05, 9.95),
         ];
         let r = ks_to_pts(&ks)?;
         assert_eq!(2, r.body.len());
-        assert_eq!(new_ts("2020-02-01 10:01:00"), r.body[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:03:00"), r.body[0].end_ts);
-        assert_eq!(new_ts("2020-02-01 10:05:00"), r.body[1].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:07:00"), r.body[1].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:01"), r.body[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03"), r.body[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:05"), r.body[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:07"), r.body[1].end_ts);
         Ok(())
+    }
+
+    
+    #[test]
+    fn test_shaper_no_stroke() -> Result<()> {
+        let sks = pts_to_sks_1_min(vec![
+            new_pt1("2020-02-01 10:00", 10.00, false),
+            new_pt1("2020-02-01 10:01", 10.10, true),
+            new_pt1("2020-02-01 10:03", 9.50, false),
+            new_pt1("2020-02-01 10:06", 9.80, true),
+        ]);
+        assert!(sks.body.is_empty());
+        assert_eq!(4, sks.tail.unwrap().body.len());
+        Ok(())
+    }
+
+    #[test]
+    fn test_shaper_one_stroke_simple() -> Result<()> {
+        let sks = pts_to_sks_1_min(vec![
+            new_pt1("2020-02-01 10:00", 10.00, false),
+            new_pt1("2020-02-01 10:10", 10.40, true),
+            new_pt1("2020-02-01 10:13", 10.30, false),
+        ]);
+        assert_eq!(1, sks.body.len());
+        assert_eq!(1, sks.tail.unwrap().body.len());
+        Ok(())
+    }
+
+    #[test]
+    fn test_shaper_one_stroke_moving_start() -> Result<()> {
+        let sks = pts_to_sks_1_min(vec![
+            new_pt1("2020-02-01 10:00", 10.00, false),
+            new_pt1("2020-02-01 10:02", 10.10, true),
+            new_pt1("2020-02-01 10:04", 9.90, false),
+            new_pt1("2020-02-01 10:10", 10.30, true),
+        ]);
+        assert_eq!(1, sks.body.len());
+        assert_eq!(new_ts("2020-02-01 10:04"), sks.body[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-01 10:10"), sks.body[0].end_pt.extremum_ts);
+        Ok(())
+    }
+
+    #[test]
+    fn test_shaper_one_stroke_non_moving_start() -> Result<()> {
+        let sks = pts_to_sks_1_min(vec![
+            new_pt1("2020-02-01 10:00", 10.00, false),
+            new_pt1("2020-02-01 10:02", 10.10, true),
+            new_pt1("2020-02-01 10:04", 10.02, false),
+            new_pt1("2020-02-01 10:10", 10.30, true),
+        ]);
+        assert_eq!(1, sks.body.len());
+        assert_eq!(new_ts("2020-02-01 10:00"), sks.body[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-01 10:10"), sks.body[0].end_pt.extremum_ts);
+        Ok(())
+    }
+
+    #[test]
+    fn test_shaper_two_strokes_simple() -> Result<()> {
+        let sks = pts_to_sks_1_min(vec![
+            new_pt1("2020-02-01 10:00", 10.00, false),
+            new_pt1("2020-02-01 10:10", 10.10, true),
+            new_pt1("2020-02-01 10:20", 10.02, false),
+        ]);
+        assert_eq!(2, sks.body.len());
+        Ok(())
+    }
+
+    fn pts_to_sks_1_min(pts: Vec<Parting>) -> StrokeSeq {
+        pts_to_sks(&new_pts(pts), &*LOCAL_TRADING_TS_1_MIN).unwrap()
+    }
+
+    fn new_pts(pts: Vec<Parting>) -> PartingSeq {
+        PartingSeq{
+            body: pts,
+            tail: vec![],
+        }
+    }
+
+    fn new_pt1(ts: &str, price: f64, top: bool) -> Parting {
+        new_pt_fix_width(ts, 1, price, 3, top)
+    }
+
+    fn new_pt5(ts: &str, price: f64, top: bool) -> Parting {
+        new_pt_fix_width(ts, 5, price, 3, top)
+    }
+
+    fn new_pt30(ts: &str, price: f64, top: bool) -> Parting {
+        new_pt_fix_width(ts, 30, price, 3, top)
+    }
+
+    fn new_pt_fix_width(ts: &str, minutes: i64, extremum_price: f64, n: i32, top: bool) -> Parting {
+        let extremum_ts = new_ts(ts);
+        let start_ts = extremum_ts - chrono::Duration::minutes(minutes);
+        let end_ts = extremum_ts + chrono::Duration::minutes(minutes);
+        Parting{
+            start_ts,
+            extremum_ts,
+            end_ts,
+            extremum_price,
+            n,
+            top,
+        }
     }
 
     fn new_k(ts: &str, high: f64, low: f64) -> K {
@@ -477,6 +583,6 @@ mod tests {
     }
 
     fn new_ts(s: &str) -> NaiveDateTime {
-        NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()
+        NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap()
     }
 }

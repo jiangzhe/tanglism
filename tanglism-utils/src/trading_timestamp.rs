@@ -1,6 +1,7 @@
 use chrono::prelude::*;
 use crate::{Result, Error};
 use crate::trading_date::{TradingDates, TradingDateBitmap, LOCAL_TRADING_DATE_BITMAP};
+use std::sync::Arc;
 
 /// 交易时刻集合
 /// 
@@ -46,21 +47,22 @@ lazy_static! {
 pub struct LocalTradingTimestamps {
     tick: String,
     tick_minutes: i32,
-    tdbm: TradingDateBitmap,
+    // 只读交易日集合，可多线程共享
+    tdbm: Arc<TradingDateBitmap>,
 }
 
 lazy_static! {
     pub static ref LOCAL_TRADING_TS_1_MIN: LocalTradingTimestamps = 
-        LocalTradingTimestamps::new("1m", LOCAL_TRADING_DATE_BITMAP.clone()).unwrap();
+        LocalTradingTimestamps::new("1m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
     pub static ref LOCAL_TRADING_TS_5_MIN: LocalTradingTimestamps = 
-        LocalTradingTimestamps::new("5m", LOCAL_TRADING_DATE_BITMAP.clone()).unwrap();
+        LocalTradingTimestamps::new("5m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
     pub static ref LOCAL_TRADING_TS_30_MIN: LocalTradingTimestamps = 
-        LocalTradingTimestamps::new("30m", LOCAL_TRADING_DATE_BITMAP.clone()).unwrap();
+        LocalTradingTimestamps::new("30m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
 }
 
 impl LocalTradingTimestamps {
 
-    pub fn new(tick: &str, tdbm: TradingDateBitmap) -> Result<Self> {
+    pub fn new(tick: &str, tdbm: Arc<TradingDateBitmap>) -> Result<Self> {
         let tick_minutes = match tick {
             "1m" => 1,
             "5m" => 5,
@@ -171,8 +173,9 @@ impl TradingDates for LocalTradingTimestamps {
         self.tdbm.all_days()
     }
 
-    fn add_day(&mut self, day: NaiveDate) -> Result<()> {
-        self.tdbm.add_day(day)
+    // 禁止向集合内插入日期
+    fn add_day(&mut self, _day: NaiveDate) -> Result<()> {
+        Err(Error("insertion of trading dates forbidden on ts collections".to_owned()))
     }
 }
 
@@ -183,13 +186,13 @@ mod tests {
 
     #[test]
     fn test_trading_ts_tick_and_minutes() -> Result<()> {
-        let ltts1 = LocalTradingTimestamps::new("1m", TradingDateBitmap::empty())?;
+        let ltts1 = LocalTradingTimestamps::new("1m", Arc::new(TradingDateBitmap::empty()))?;
         assert_eq!("1m".to_owned(), ltts1.tick());
         assert_eq!(1, ltts1.tick_minutes());
-        let ltts2 = LocalTradingTimestamps::new("5m", TradingDateBitmap::empty())?;
+        let ltts2 = LocalTradingTimestamps::new("5m", Arc::new(TradingDateBitmap::empty()))?;
         assert_eq!("5m".to_owned(), ltts2.tick());
         assert_eq!(5, ltts2.tick_minutes());
-        let ltts3 = LocalTradingTimestamps::new("30m", TradingDateBitmap::empty())?;
+        let ltts3 = LocalTradingTimestamps::new("30m", Arc::new(TradingDateBitmap::empty()))?;
         assert_eq!("30m".to_owned(), ltts3.tick());
         assert_eq!(30, ltts3.tick_minutes());
         Ok(())
@@ -200,7 +203,7 @@ mod tests {
         let mut tdbm = TradingDateBitmap::empty();
         tdbm.add_day_str("2020-02-01");
         tdbm.add_day_str("2020-02-02");
-        let ltts = LocalTradingTimestamps::new("30m", tdbm)?;
+        let ltts = LocalTradingTimestamps::new("30m", Arc::new(tdbm))?;
         let ts_02010800 = NaiveDateTime::from_str("2020-02-01T08:00:00")?;
         let ts_02010930 = NaiveDateTime::from_str("2020-02-01T09:30:00")?;
         let ts_02011000 = NaiveDateTime::from_str("2020-02-01T10:00:00")?;
