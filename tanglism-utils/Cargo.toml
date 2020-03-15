@@ -1,0 +1,19 @@
+[package]
+name = "tanglism-utils"
+version = "0.1.0"
+authors = ["Zhe Jiang <nju.jiangzhe@gmail.com>"]
+edition = "2018"
+workspace = ".."
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+jqdata = { version = "0.1.0", path = "../jqdata" }
+chrono = "0.4"
+chrono-tz = "0.5"
+serde_json = "1.0"
+rusqlite = { version = "0.21", features = ["bundled"] }
+lazy_static = "1.4"
+tanglism-data = { version = "0.1.0", path = "../tanglism-data" }
+
+[build-dependencies]
+quote = "1.0"

@@ -1,7 +1,8 @@
-use crate::datetime::{DatetimeProcessor, DatetimeRange};
 use crate::{code_autocomplete, request_datetime, Error, Result};
 use jqdata::JqdataClient;
 use rusqlite::{params, Connection, ToSql};
+use tanglism_utils::LOCAL_TRADING_DATE_BITMAP as trading_dates;
+use crate::datetime::{start_of_today, end_of_today};
 
 type InsertResult = Result<u64>;
 
@@ -9,19 +10,17 @@ type InsertResult = Result<u64>;
 pub struct TradeDayInserter {
     conn: Connection,
     cli: JqdataClient,
-    dtp: DatetimeProcessor,
 }
 
 impl TradeDayInserter {
     pub fn new(conn: Connection, cli: JqdataClient) -> Self {
-        let dtp = DatetimeProcessor::new("1d").unwrap();
-        TradeDayInserter { conn, cli, dtp }
+        TradeDayInserter { conn, cli }
     }
 
     pub fn insert(&mut self, from: Option<String>, to: Option<String>) -> InsertResult {
         let from = from.unwrap_or("2010-01-01".to_owned());
         let to = match to {
-            None => self.dtp.end_of_today(),
+            None => end_of_today(),
             Some(to) => to,
         };
         let dt_range = match self.datetime_range()? {
@@ -214,6 +213,8 @@ impl PricePeriodInserter {
         Ok(inserted)
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {

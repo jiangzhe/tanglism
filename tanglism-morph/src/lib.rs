@@ -13,7 +13,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// 在缠论中，K线的开盘价和收盘价被忽略，仅包含时刻，最高点，最低点
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct K {
-    pub ts: String,
+    pub ts: NaiveDateTime,
     pub low: f64,
     pub high: f64,
 }
@@ -27,9 +27,9 @@ pub struct K {
 /// 为新K线的低点。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CK {
-    pub start_ts: String,
-    pub end_ts: String,
-    pub extremum_ts: String,
+    pub start_ts: NaiveDateTime,
+    pub end_ts: NaiveDateTime,
+    pub extremum_ts: NaiveDateTime,
     pub low: f64,
     pub high: f64,
     pub n: i32,
@@ -45,14 +45,14 @@ pub struct CK {
 /// 分型实际可由多于3根K线构成，只要两侧的K线满足包含原则。
 /// 按照缠论的严格定义，分型仅适用与最小级别的K线图，即1分钟K线图上，后续分析都由
 /// 1分钟K线图向上递归构成更大的形态。
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Parting {
     // 分型起始时刻，已考虑K线包含关系
-    pub start_ts: String,
+    pub start_ts: NaiveDateTime,
     // 分型结束时刻，已考虑K线包含关系
-    pub end_ts: String,
+    pub end_ts: NaiveDateTime,
     // 分型转折时刻
-    pub extremum_ts: String,
+    pub extremum_ts: NaiveDateTime,
     // 转折点价格
     pub extremum_price: f64,
     // 组成分型的K线数
@@ -66,7 +66,7 @@ pub struct Parting {
 /// 缠论的基础概念
 /// 由相邻的顶分型与底分型构成，不可同底或同顶，同时需满足两分型间有至少1根独立K线，
 /// 即存在1条K线，不属于两侧的分型，且不能因为包含原则属于两侧的分型。
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Stroke {
     pub start_ts: NaiveDateTime,
     pub start_price: f64,
@@ -86,7 +86,7 @@ pub struct Stroke {
 /// 顶分型的顶即向上线段的结束。
 /// 底分型的底即向下线段的结束。
 /// 当确定线段终点后，该终点后的笔不再归属于该线段。
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Segment {
     // 起始时刻
     pub start_ts: NaiveDateTime,
@@ -106,7 +106,7 @@ pub struct Segment {
 /// 由至少3个存在重叠区间的次级别走势类型构成。
 /// 1分钟K线图中走势类型由线段代替。
 /// 即5分钟的中枢由至少3个1分钟级别的线段构成。
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Center {
     // 起始时刻
     pub start_ts: NaiveDateTime,
@@ -137,7 +137,7 @@ pub struct Center {
 /// 分为趋势和盘整
 /// 趋势由至少2个没有价格区间重叠的中枢构成，趋势向上则为上涨，趋势向下则为下跌
 /// 盘整由1个中枢构成
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Trend {
     // 起始时刻
     pub start_ts: NaiveDateTime,
