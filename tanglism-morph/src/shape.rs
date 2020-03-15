@@ -14,18 +14,38 @@ pub trait Source {
 ///
 /// 包含潜在分型的序列，以及未能形成分型的尾部K线
 /// 可通过输入最新K线，更新或延长已有序列
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PartingSeq {
-    pub pts: Vec<Parting>,
+    pub body: Vec<Parting>,
     pub tail: Vec<CK>,
+}
+
+impl PartingSeq {
+    fn new() -> Self {
+        PartingSeq{
+            body: Vec::new(),
+            tail: Vec::new(),
+        }
+    }
 }
 
 /// 笔序列
 ///
 /// 包含笔序列，以及未形成笔的尾部分型
 pub struct StrokeSeq {
-    pub sks: Vec<Stroke>,
-    pub tail: Vec<Parting>,
+    pub body: Vec<Stroke>,
+    // 笔尾
+    // 包含未能成笔的顶底分型及合成K线
+    pub tail: Option<PartingSeq>,
+}
+
+impl StrokeSeq {
+    fn new() -> Self {
+        StrokeSeq{
+            body: Vec::new(),
+            tail: None,
+        }
+    }
 }
 
 pub struct SegmentSeq {
@@ -43,7 +63,7 @@ pub trait KShaper {
 
 /// 将K线图解析为分型序列
 pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
-    let mut pts = Vec::new();
+    let mut body = Vec::new();
     let mut first_k = None;
     let mut second_k = None;
     let mut third_k = None;
@@ -121,7 +141,7 @@ pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
             n: k1.n + k2.n + k3.n,
             top: !upward,
         };
-        pts.push(parting);
+        body.push(parting);
 
         // 当k2, k3, k形成顶底分型时，左移1位
         if (upward && k.low < k3.low) || (!upward && k.high > k3.high) {
@@ -153,7 +173,7 @@ pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
             n: k1.n + k2.n + k3.n,
             top: !upward,
         };
-        pts.push(parting);
+        body.push(parting);
         // 向左平移k2和k3
         first_k = Some(k2);
         second_k = Some(k3);
@@ -167,11 +187,39 @@ pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
     if second_k.is_some() {
         tail.push(second_k.unwrap());
     }
-    Ok(PartingSeq { pts, tail })
+    Ok(PartingSeq { body, tail })
 }
 
 /// 将分型序列解析为笔序列
-pub fn pts_to_sks(pts: &PartingSeq) -> Result<StrokeSeq> {
+/// 
+/// 步骤：
+/// 1. 选择起始点。
+/// 2. 选择下一个点。
+///    若异型：邻接或交叉则忽略，不邻接则成笔
+///    若同型：顶更高/底更低则修改当前笔，反之则忽略
+pub fn pts_to_sks(pts: &PartingSeq, unit: String) -> Result<StrokeSeq> {
+    if pts.body.is_empty() {
+        return Ok(StrokeSeq{
+            body: Vec::new(),
+            tail: Some(pts.clone()),
+        });
+    }
+    // todo
+    // let mut pts_iter = pts.body.iter();
+    // // 笔序列
+    // let mut sks = Vec::new();
+    // // 暂存忽略点序列
+    // let mut ignored = Vec::new();
+    // // 起点
+    // let mut start = pts_iter.next().unwrap().clone();
+    // while let Some(pt) = pts_iter.next() {
+    //     if pt.top != start.top {  // 异型
+    //         // todo
+    //     } else {  // 同型
+
+    //     }
+    // }
+
     unimplemented!()
 }
 
@@ -183,9 +231,9 @@ pub fn sks_to_sgs(sks: &StrokeSeq) -> Result<SegmentSeq> {
 /// 辅助函数，将单个K线转化为合并K线
 fn k_to_ck(k: &K) -> CK {
     CK {
-        start_ts: k.ts.clone(),
-        end_ts: k.ts.clone(),
-        extremum_ts: k.ts.clone(),
+        start_ts: k.ts,
+        end_ts: k.ts,
+        extremum_ts: k.ts,
         high: k.high,
         low: k.low,
         n: 1,
@@ -195,15 +243,15 @@ fn k_to_ck(k: &K) -> CK {
 /// 辅助函数，判断相邻K线是否符合包含关系，并在符合情况下返回包含后的合并K线
 fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
     let extremum_ts = if k1.high >= k2.high && k1.low <= k2.low {
-        k1.extremum_ts.clone()
+        k1.extremum_ts
     } else if k2.high >= k1.high && k2.low <= k1.low {
-        k2.ts.clone()
+        k2.ts
     } else {
         return None;
     };
 
-    let start_ts = k1.start_ts.clone();
-    let end_ts = k2.ts.clone();
+    let start_ts = k1.start_ts;
+    let end_ts = k2.ts;
     let n = k1.n + 1;
 
     let (high, low) = if upward {
@@ -231,6 +279,7 @@ fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
 mod tests {
     use super::*;
     use crate::K;
+    use chrono::NaiveDateTime;
     #[test]
     fn test_shaper_no_parting() -> Result<()> {
         let ks = vec![
@@ -242,10 +291,10 @@ mod tests {
         ];
         // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         let r = ks_to_pts(&ks)?;
-        assert_eq!(0, r.pts.len());
+        assert_eq!(0, r.body.len());
         assert_eq!(2, r.tail.len());
-        assert_eq!("2020-02-01 10:03:00", &r.tail[0].start_ts);
-        assert_eq!("2020-02-01 10:04:00", &r.tail[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03:00"), r.tail[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:04:00"), r.tail[1].start_ts);
         Ok(())
     }
 
@@ -259,13 +308,13 @@ mod tests {
             new_k("2020-02-01 10:04:00", 10.10, 10.00),
         ];
         let r = ks_to_pts(&ks)?;
-        assert_eq!(1, r.pts.len());
+        assert_eq!(1, r.body.len());
         assert_eq!(2, r.tail.len());
-        assert_eq!("2020-02-01 10:01:00", &r.pts[0].start_ts);
-        assert_eq!("2020-02-01 10:03:00", &r.pts[0].end_ts);
-        assert_eq!("2020-02-01 10:02:00", &r.pts[0].extremum_ts);
-        assert_eq!(10.20, r.pts[0].extremum_price);
-        assert_eq!(true, r.pts[0].top);
+        assert_eq!(new_ts("2020-02-01 10:01:00"), r.body[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03:00"), r.body[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:02:00"), r.body[0].extremum_ts);
+        assert_eq!(10.20, r.body[0].extremum_price);
+        assert_eq!(true, r.body[0].top);
         Ok(())
     }
 
@@ -281,9 +330,9 @@ mod tests {
         let r = ks_to_pts(&ks)?;
         // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         // panic!(json);
-        assert_eq!(1, r.pts.len());
+        assert_eq!(1, r.body.len());
         assert_eq!(2, r.tail.len());
-        assert_eq!("2020-02-01 10:04:00", &r.pts[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:04:00"), r.body[0].end_ts);
         Ok(())
     }
 
@@ -297,13 +346,13 @@ mod tests {
             new_k("2020-02-01 10:04:00", 10.20, 10.10),
         ];
         let r = ks_to_pts(&ks)?;
-        assert_eq!(2, r.pts.len());
-        assert_eq!("2020-02-01 10:01:00", &r.pts[0].start_ts);
-        assert_eq!("2020-02-01 10:03:00", &r.pts[0].end_ts);
-        assert_eq!(true, r.pts[0].top);
-        assert_eq!("2020-02-01 10:02:00", &r.pts[1].start_ts);
-        assert_eq!("2020-02-01 10:04:00", &r.pts[1].end_ts);
-        assert_eq!(false, r.pts[1].top);
+        assert_eq!(2, r.body.len());
+        assert_eq!(new_ts("2020-02-01 10:01:00"), r.body[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03:00"), r.body[0].end_ts);
+        assert_eq!(true, r.body[0].top);
+        assert_eq!(new_ts("2020-02-01 10:02:00"), r.body[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:04:00"), r.body[1].end_ts);
+        assert_eq!(false, r.body[1].top);
         assert_eq!(2, r.tail.len());
         Ok(())
     }
@@ -321,19 +370,23 @@ mod tests {
             new_k("2020-02-01 10:07:00", 10.05, 9.95),
         ];
         let r = ks_to_pts(&ks)?;
-        assert_eq!(2, r.pts.len());
-        assert_eq!("2020-02-01 10:01:00", &r.pts[0].start_ts);
-        assert_eq!("2020-02-01 10:03:00", &r.pts[0].end_ts);
-        assert_eq!("2020-02-01 10:05:00", &r.pts[1].start_ts);
-        assert_eq!("2020-02-01 10:07:00", &r.pts[1].end_ts);
+        assert_eq!(2, r.body.len());
+        assert_eq!(new_ts("2020-02-01 10:01:00"), r.body[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03:00"), r.body[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:05:00"), r.body[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:07:00"), r.body[1].end_ts);
         Ok(())
     }
 
     fn new_k(ts: &str, high: f64, low: f64) -> K {
         K {
-            ts: ts.to_owned(),
+            ts: new_ts(ts),
             high,
             low,
         }
+    }
+
+    fn new_ts(s: &str) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()
     }
 }

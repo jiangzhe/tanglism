@@ -1,10 +1,9 @@
 mod datetime;
-mod error;
 mod insert;
 mod select;
-pub use error::Error;
 pub use insert::*;
 pub use select::*;
+use tanglism_utils::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 pub use datetime::parse_ts_from_str;
 

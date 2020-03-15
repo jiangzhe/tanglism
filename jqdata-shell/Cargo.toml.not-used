@@ -11,6 +11,7 @@ bench = false
 
 [dependencies]
 jqdata = { version = "0.1.0", path = "../jqdata" }
+tanglism-utils = { version = "0.1.0", path = "../tanglism-utils" }
 structopt = "0.3"
 structopt-derive = "0.4"
 rusqlite = { version = "0.21", features = ["bundled"] }
