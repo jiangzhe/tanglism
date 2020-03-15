@@ -42,7 +42,7 @@ fn idx_to_day(idx: i64) -> Option<NaiveDate> {
     if day.signed_duration_since(*FIRST_DAY).num_days() < 0 {
         return None;
     }
-    return Some(day);
+    Some(day)
 }
 
 fn idx_to_day_unchecked(idx: i64) -> NaiveDate {
@@ -60,7 +60,7 @@ fn day_to_idx(day: NaiveDate) -> Option<i64> {
     }
     let idx = day_to_idx_unchecked(day);
     debug_assert!(idx >= 0);
-    return Some(idx);
+    Some(idx)
 }
 
 fn day_to_idx_unchecked(day: NaiveDate) -> i64 {
@@ -137,7 +137,7 @@ impl TradingDateBitmap {
     fn ensure_capacity(&mut self, capacity: usize) {
         let buckets = (capacity + BITS - 1) / BITS;
         if self.bm.len() < buckets {
-            for i in self.bm.len()..buckets {
+            for _i in self.bm.len()..buckets {
                 self.bm.push(0);
             }
         }
@@ -153,7 +153,7 @@ impl TradingDateBitmap {
     fn contains_day_idx(&self, idx: usize) -> bool {
         let bucket_id = idx / BITS;
         let bit_pos = idx % BITS;
-        return bucket_id < self.bm.len() && self.bm[bucket_id] & (BITS_ONE << bit_pos) != 0;
+        bucket_id < self.bm.len() && self.bm[bucket_id] & (BITS_ONE << bit_pos) != 0
     }
 
     fn prev_day_idx_inclusive(&self, idx: i64) -> Option<i64> {
@@ -174,7 +174,7 @@ impl TradingDateBitmap {
             bucket_id -= 1;
             bit_pos = 63;
         }
-        return None;
+        None
     }
 
     fn next_day_idx_inclusive(&self, idx: i64) -> Option<i64> {
@@ -231,7 +231,7 @@ impl<'a> Iterator for IndexIter<'a> {
             self.bucket_id += 1;
             self.bit_pos = 0;
         }
-        return None;
+        None
     }
 }
 
@@ -244,7 +244,7 @@ impl TradingDates for TradingDateBitmap {
         if let Some(next_idx) = self.next_day_idx_inclusive(0) {
             return idx_to_day(next_idx);
         }
-        return None;
+        None
     }
 
     fn last_day(&self) -> Option<NaiveDate> {
@@ -255,7 +255,7 @@ impl TradingDates for TradingDateBitmap {
         if let Some(prev_idx) = self.prev_day_idx_inclusive(idx as i64) {
             return idx_to_day(prev_idx);
         }
-        return None;
+        None
     }
     
     fn prev_day(&self, day: NaiveDate) -> Option<NaiveDate> {
@@ -276,7 +276,7 @@ impl TradingDates for TradingDateBitmap {
                 return Some(prev_day);
             }
         }
-        return None;
+        None
     }
 
     fn next_day(&self, day: NaiveDate) -> Option<NaiveDate> {
@@ -292,18 +292,18 @@ impl TradingDates for TradingDateBitmap {
                 return Some(next_day);
             }
         }
-        return None;
+        None
     }
 
     fn all_days(&self) -> Vec<NaiveDate> {
-        self.all_indices().filter_map(|idx| idx_to_day(idx)).collect()
+        self.all_indices().filter_map(idx_to_day).collect()
     }
 
     fn contains_day(&self, day: NaiveDate) -> bool {
         if let Some(idx) = day_to_idx(day) {
             return self.contains_day_idx(idx as usize);
         }
-        return false;
+        false
     }
     
     fn add_day(&mut self, day: NaiveDate) -> Result<()> {
@@ -311,7 +311,7 @@ impl TradingDates for TradingDateBitmap {
             self.add_day_idx(idx as usize);
             return Ok(());
         }
-        return Err(Error("day not in range".to_owned()));
+        Err(Error("day not in range".to_owned()))
     }
 }
 
