@@ -1,4 +1,4 @@
-use crate::{Center, Error, Parting, Result, Segment, Stroke, Trend, CK, K};
+use crate::{Error, Parting, Result, Segment, Stroke, CK, K};
 use serde_derive::*;
 
 /// 单标的确定周期的数据来源
@@ -134,9 +134,9 @@ pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
 
         //不包含，需构建分型并记录
         let parting = Parting {
-            start_ts: k1.start_ts.clone(),
-            end_ts: k3.end_ts.clone(),
-            extremum_ts: k2.extremum_ts.clone(),
+            start_ts: k1.start_ts,
+            end_ts: k3.end_ts,
+            extremum_ts: k2.extremum_ts,
             extremum_price: if upward { k2.low } else { k2.high },
             n: k1.n + k2.n + k3.n,
             top: !upward,
@@ -167,8 +167,8 @@ pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
 
         let parting = Parting {
             start_ts: k1.start_ts,
-            end_ts: k3.end_ts.clone(),
-            extremum_ts: k2.extremum_ts.clone(),
+            end_ts: k3.end_ts,
+            extremum_ts: k2.extremum_ts,
             extremum_price: if upward { k2.low } else { k2.high },
             n: k1.n + k2.n + k3.n,
             top: !upward,
@@ -181,11 +181,11 @@ pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
 
     let mut tail = vec![];
     // 将剩余k线加入尾部，必定不会出现三根K线
-    if first_k.is_some() {
-        tail.push(first_k.unwrap());
+    if let Some(fk) = first_k {
+        tail.push(fk);
     }
-    if second_k.is_some() {
-        tail.push(second_k.unwrap());
+    if let Some(sk) = second_k {
+        tail.push(sk);
     }
     Ok(PartingSeq { body, tail })
 }

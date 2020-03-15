@@ -2,13 +2,13 @@
 extern crate quote;
 
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::process::Command;
 
 fn main() -> std::io::Result<()> {
     let input = File::open("data/trade_days.csv")?;
-    let reader = std::io::BufReader::new(input);
+    let reader = BufReader::new(input);
     let mut days = Vec::new();
     for line in reader.lines() {
         let s = line?;
