@@ -86,16 +86,9 @@ pub struct Stroke {
 /// 当确定线段终点后，该终点后的笔不再归属于该线段。
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Segment {
-    // 起始时刻
-    pub start_ts: NaiveDateTime,
-    // 起始价格
-    pub start_price: f64,
-    // 结束时刻
-    pub end_ts: NaiveDateTime,
-    // 结束价格
-    pub end_price: f64,
-    // 是否向上走势
-    pub upward: bool,
+    pub start_sk: Stroke,
+    pub end_sk: Stroke,
+    pub determined: bool,
 }
 
 /// 中枢

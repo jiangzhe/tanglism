@@ -24,6 +24,7 @@ pub struct PartingSeq {
 /// 笔序列
 ///
 /// 包含笔序列，以及未形成笔的尾部分型
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StrokeSeq {
     pub body: Vec<Stroke>,
     // 笔尾
@@ -32,10 +33,10 @@ pub struct StrokeSeq {
 }
 
 /// 线段序列
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SegmentSeq {
-    pub determined: Vec<Segment>,
-    pub undetermined: Vec<Stroke>,
-    pub undetermined_top: bool,
+    pub body: Vec<Segment>,
+    pub tail: Option<StrokeSeq>,
 }
 
 /// 将K线图解析为分型序列
@@ -54,7 +55,7 @@ struct PartingShaper<'k> {
 
 impl<'k> PartingShaper<'k> {
     fn new(ks: &'k [K]) -> Self {
-        PartingShaper{
+        PartingShaper {
             ks,
             body: Vec::new(),
             first_k: None,
@@ -158,13 +159,13 @@ impl<'k> PartingShaper<'k> {
         for k in self.ks.iter() {
             self.consume(k);
         }
-    
+
         // 结束所有k线分析后，依然存在第三根K线，说明此时三根K线刚好构成顶底分型
         if self.third_k.is_some() {
             let k1 = self.first_k.take().unwrap();
             let k2 = self.second_k.take().unwrap();
             let k3 = self.third_k.take().unwrap();
-    
+
             let parting = Parting {
                 start_ts: k1.start_ts,
                 end_ts: k3.end_ts,
@@ -178,7 +179,7 @@ impl<'k> PartingShaper<'k> {
             self.first_k = Some(k2);
             self.second_k = Some(k3);
         }
-    
+
         let mut tail = vec![];
         // 将剩余k线加入尾部，必定不会出现三根K线
         if let Some(fk) = self.first_k {
@@ -187,8 +188,8 @@ impl<'k> PartingShaper<'k> {
         if let Some(sk) = self.second_k {
             tail.push(sk);
         }
-        Ok(PartingSeq{ 
-            body: self.body, 
+        Ok(PartingSeq {
+            body: self.body,
             tail,
         })
     }
@@ -205,7 +206,6 @@ impl<'k> PartingShaper<'k> {
         }
     }
 
-    
     /// 辅助函数，判断相邻K线是否符合包含关系，并在符合情况下返回包含后的合并K线
     fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
         let extremum_ts = if k1.high >= k2.high && k1.low <= k2.low {
@@ -243,14 +243,15 @@ impl<'k> PartingShaper<'k> {
 }
 
 /// 将分型序列解析为笔序列
-/// 
+///
 /// 步骤：
 /// 1. 选择起始点。
 /// 2. 选择下一个点。
 ///    若异型：邻接或交叉则忽略，不邻接则成笔
 ///    若同型：顶更高/底更低则修改当前笔，反之则忽略
 pub fn pts_to_sks<T>(pts: &PartingSeq, tts: &T) -> Result<StrokeSeq>
-where T: TradingTimestamps,
+where
+    T: TradingTimestamps,
 {
     StrokeShaper::new(pts, tts).run()
 }
@@ -265,7 +266,7 @@ struct StrokeShaper<'p, 't, T> {
 
 impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
     fn new(pts: &'p PartingSeq, tts: &'t T) -> Self {
-        StrokeShaper{
+        StrokeShaper {
             pts,
             tts,
             sks: Vec::new(),
@@ -276,7 +277,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
 
     fn run(mut self) -> Result<StrokeSeq> {
         if self.pts.body.is_empty() {
-            return Ok(StrokeSeq{
+            return Ok(StrokeSeq {
                 body: Vec::new(),
                 tail: Some(self.pts.clone()),
             });
@@ -288,9 +289,9 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         while let Some(pt) = pts_iter.next() {
             self.consume(pt);
         }
-        Ok(StrokeSeq{
+        Ok(StrokeSeq {
             body: self.sks,
-            tail: Some(PartingSeq{
+            tail: Some(PartingSeq {
                 body: self.tail,
                 tail: self.pts.tail.clone(),
             }),
@@ -313,11 +314,13 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             return;
         }
         // 顶比底低
-        if (pt.top && pt.extremum_price <= self.start().extremum_price) || (self.start().top && self.start().extremum_price <= pt.extremum_price) {
+        if (pt.top && pt.extremum_price <= self.start().extremum_price)
+            || (self.start().top && self.start().extremum_price <= pt.extremum_price)
+        {
             return;
         }
         // 成笔
-        let new_sk = Stroke{
+        let new_sk = Stroke {
             start_pt: self.start.take().unwrap(),
             end_pt: pt.clone(),
         };
@@ -331,14 +334,15 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             return;
         }
         // 顶比起点低，底比起点高
-        if (pt.top && pt.extremum_price < self.start().extremum_price) || (!pt.top && pt.extremum_price > self.start().extremum_price) {
+        if (pt.top && pt.extremum_price < self.start().extremum_price)
+            || (!pt.top && pt.extremum_price > self.start().extremum_price)
+        {
             return;
         }
-        
+
         if let Some(last_sk) = self.sks.last_mut() {
             // 有笔，需要修改笔终点
             last_sk.end_pt = pt.clone();
-            
         }
         self.start.replace(pt.clone());
         self.tail.clear();
@@ -366,6 +370,131 @@ pub fn sks_to_sgs(sks: &StrokeSeq) -> Result<SegmentSeq> {
     unimplemented!()
 }
 
+enum SegmentState {
+    Empty,
+    Undetermined {
+        start_pt: Parting,
+        end_pt: Parting,
+        gap: bool,
+    },
+}
+
+impl SegmentState {
+
+    fn process(mut self, shaper: &mut SegmentShaper, input: Stroke) -> SegmentState {
+        unimplemented!()
+    }
+}
+
+struct SegmentShaper<'s> {
+    // 输入的笔序列
+    sks: &'s StrokeSeq,
+    // 已确认的线段序列
+    sgs: Vec<Segment>,
+    // 分析线段的中间结果 
+    curr_sg: SegmentState,
+    // 无法构成线段的头部笔
+    head: Vec<Stroke>,
+    // 无法构成线段的尾部笔
+    tail: Vec<Stroke>,
+    // 主序列，存储组成线段的所有笔
+    ms: Vec<Stroke>,
+    // 特征序列，存储线段的特征序列
+    // 当线段向上时，由所有向下笔构成
+    // 当线段向下时，由所有向上笔构成
+    // 当且仅当特征序列构成顶分型时，结束向上线段
+    // 当且仅当特征序列构成底分型时，结束向下线段
+    // todo
+    // 尤其需要注意的时，特征序列的顶底分型与K线不完全一样
+    // 其中，转折点前后的特征序列不可以应用包含关系，
+    // 因为转折点前后的特征序列的性质并不相同（分属于不同的笔）
+    // 详细解释见71课
+    cs: Vec<Stroke>,
+}
+
+/// 判断线段的方法：
+/// 1. 根据起始笔，记录为线段走向。向上笔开启向上线段，向下笔开启向下线段
+/// 2. 第二笔，且其后所有偶数笔都属于特征序列，可进行以下判断
+///    1）结束点反向超越起点，
+///    则根据当前是否有未确定线段执行：
+///    a）有未确定线段，则转化为确定线段（其终点必为该特征序列笔的起点）
+///       且由该特征序列笔的起点，开始重新判断新线段。
+///    b）无未确定线段，
+///    如果当前未成线段，且存在点低于起点，则该点以前的所有笔
+///    都是起点以前未知走势残笔。可丢弃，从该最低点开始判断新线段
+///    2）结束点没有反向超越起点，表示该走势仍持续
+///    需根据是否有未确定线段执行：
+///    a）有未确定线段：将当前笔合并进线段的特征序列，并判断
+///    特征序列是否存在跳空标记：
+///    a.1) 存在跳空标记，则判断跳空标记后反向特征序列是否形成顺势分型
+///        原上升线段：下降笔构成序列，是否存在底分型，
+///        原下降线段：上升笔构成序列，是否存在顶分型。
+///    a.1.1）形成，将跳空标记的未确定线段转化未确定线段，回补跳空标记后所有笔。
+///    a.2.2) 未形成（未形成的判断可能需要考虑多种情况），取消跳空标记，继续下一笔的分析
+///    a.2) 不存在跳空标记，则判断特征序列是否已构成分型（向上顶分型，向下底分型）
+///    a.2.1）若未构成，继续下一笔的分析
+///    a.2.2）若构成，判断该分型左半部分是否有跳空
+///    a.2.2.1）若无跳空，则转化该未确定线段为确定线段，需要回补从线段终点开始的已消费的笔
+///    2.2.2.2) 若有跳空，则记录跳空标记，继续下一笔的分析
+/// 3. 第三笔，且其后所有奇数笔都与起始笔通向，则进行一下判断
+///    1）如结束点超越同向的最值点（上升最大值，下降最小值），则构成由起点到该结束点的未确定线段，
+///       如之前已存在未确定线段：
+///       a）存在跳空标记，比较并记录跳空后最值点。
+///       b）不存在跳空标记，替换之。
+///    2）如果不超越，继续下一笔
+/// todo: 
+/// 逻辑过于复杂，考虑使用状态机保证代码的清晰和正确
+/// 考虑特殊处理开盘跳空情景（如相邻分型组成笔）
+impl<'s> SegmentShaper<'s> {
+    fn new(sks: &'s StrokeSeq) -> Self {
+        SegmentShaper{
+            sks,
+            sgs: Vec::new(),
+            curr_sg: SegmentState::Empty,
+            head: Vec::new(),
+            tail: Vec::new(),
+            ms: Vec::new(),
+            cs: Vec::new(),
+        }
+    }
+
+    fn run(mut self) -> Result<SegmentSeq> {
+        if self.sks.body.is_empty() {
+            return Ok(SegmentSeq{
+                body: Vec::new(),
+                tail: Some(self.sks.clone()),
+            });
+        }
+
+        let mut sks_iter = self.sks.body.iter();
+        let first = sks_iter.next().unwrap().clone();
+        self.ms.push(first);
+
+        while let Some(sk) = sks_iter.next() {
+            self.consume(sk);
+        }
+
+        unimplemented!()
+    }
+
+    fn consume(&mut self, sk: &Stroke) {
+        debug_assert!(!self.ms.is_empty());
+        // 当前线段走势
+        let upward = self.ms[0].start_pt.extremum_price < self.ms[0].end_pt.extremum_price;
+        // 当前笔走势
+        let sk_upward = sk.start_pt.extremum_price < sk.end_pt.extremum_price;
+        if upward != sk_upward {
+            // 反向，则为特征序列
+            self.cs.push(sk.clone());
+            // 当特征序列结束点超过起点（向上线段低于起点；向下线段高于起点）时
+            // 表明起点
+        } else {
+            // 正向，主序列，延续走势
+        }
+        self.cs.push(sk.clone());
+    }
+
+}
 
 #[cfg(test)]
 mod tests {
@@ -472,7 +601,6 @@ mod tests {
         Ok(())
     }
 
-    
     #[test]
     fn test_shaper_no_stroke() -> Result<()> {
         let sks = pts_to_sks_1_min(vec![
@@ -542,7 +670,7 @@ mod tests {
     }
 
     fn new_pts(pts: Vec<Parting>) -> PartingSeq {
-        PartingSeq{
+        PartingSeq {
             body: pts,
             tail: vec![],
         }
@@ -564,7 +692,7 @@ mod tests {
         let extremum_ts = new_ts(ts);
         let start_ts = extremum_ts - chrono::Duration::minutes(minutes);
         let end_ts = extremum_ts + chrono::Duration::minutes(minutes);
-        Parting{
+        Parting {
             start_ts,
             extremum_ts,
             end_ts,
