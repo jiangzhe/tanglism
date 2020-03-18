@@ -1,5 +1,5 @@
+use crate::{Error, Result};
 use chrono::prelude::*;
-use crate::{Result, Error};
 use std::sync::Arc;
 
 const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M";
@@ -69,10 +69,9 @@ fn day_to_idx_unchecked(day: NaiveDate) -> i64 {
 }
 
 /// 交易日集合
-/// 
+///
 /// 用于获取交易日，计算前一个或后一个交易日，计算某天是否为交易日等
 pub trait TradingDates {
-    
     // 集合中的第一个交易日
     fn first_day(&self) -> Option<NaiveDate>;
 
@@ -93,7 +92,6 @@ pub trait TradingDates {
 
     // 向集合内添加指定交易日
     fn add_day(&mut self, day: NaiveDate) -> Result<()>;
-
 }
 
 // 位图比特数
@@ -118,12 +116,9 @@ pub struct TradingDateBitmap {
 }
 
 impl TradingDateBitmap {
-
     // 创建空实例
     pub fn empty() -> Self {
-        TradingDateBitmap{
-            bm: Vec::new(),
-        }
+        TradingDateBitmap { bm: Vec::new() }
     }
 
     // 通过字符串添加日期，若字符串无效则直接丢弃
@@ -182,7 +177,7 @@ impl TradingDateBitmap {
     fn next_day_idx_inclusive(&self, idx: i64) -> Option<i64> {
         debug_assert!(idx >= 0);
         debug_assert!((idx / BITS as i64) < self.bm.len() as i64);
-        let mut idx_iter = IndexIter{
+        let mut idx_iter = IndexIter {
             inner: &self,
             bucket_id: idx / BITS as i64,
             bit_pos: idx % BITS as i64,
@@ -195,13 +190,12 @@ impl TradingDateBitmap {
     }
 
     fn all_indices(&self) -> IndexIter {
-        IndexIter{
+        IndexIter {
             inner: &self,
             bucket_id: 0,
             bit_pos: 0,
         }
     }
-    
 }
 
 struct IndexIter<'a> {
@@ -238,7 +232,6 @@ impl<'a> Iterator for IndexIter<'a> {
 }
 
 impl TradingDates for TradingDateBitmap {
-
     fn first_day(&self) -> Option<NaiveDate> {
         if self.bm.is_empty() {
             return None;
@@ -259,7 +252,7 @@ impl TradingDates for TradingDateBitmap {
         }
         None
     }
-    
+
     fn prev_day(&self, day: NaiveDate) -> Option<NaiveDate> {
         if self.bm.is_empty() {
             return None;
@@ -307,7 +300,7 @@ impl TradingDates for TradingDateBitmap {
         }
         false
     }
-    
+
     fn add_day(&mut self, day: NaiveDate) -> Result<()> {
         if let Some(idx) = day_to_idx(day) {
             self.add_day_idx(idx as usize);
@@ -327,11 +320,17 @@ mod tests {
     fn test_duration_between_days() -> Result<()> {
         let d1 = NaiveDate::parse_from_str("2020-02-01", "%Y-%m-%d")?;
         let d2 = NaiveDate::parse_from_str("2020-02-02", "%Y-%m-%d")?;
-        assert_eq!(NaiveDate::signed_duration_since(d1, d2), chrono::Duration::days(-1));
+        assert_eq!(
+            NaiveDate::signed_duration_since(d1, d2),
+            chrono::Duration::days(-1)
+        );
 
         let d3 = NaiveDate::parse_from_str("2020-03-01", "%Y-%m-%d")?;
         let d4 = NaiveDate::parse_from_str("2020-02-28", "%Y-%m-%d")?;
-        assert_eq!(NaiveDate::signed_duration_since(d3, d4), chrono::Duration::days(2));
+        assert_eq!(
+            NaiveDate::signed_duration_since(d3, d4),
+            chrono::Duration::days(2)
+        );
         Ok(())
     }
 
@@ -358,7 +357,7 @@ mod tests {
 
         // old days before all inserted days
         let old1 = NaiveDate::parse_from_str("2019-01-01", "%Y-%m-%d")?;
-        assert_eq!(d1, tdbm.next_day(old1).unwrap());        
+        assert_eq!(d1, tdbm.next_day(old1).unwrap());
         let old2 = NaiveDate::parse_from_str("2009-01-01", "%Y-%m-%d")?;
         assert_eq!(None, tdbm.next_day(old2));
         // new days after all inserted days
@@ -424,5 +423,4 @@ mod tests {
         assert_eq!(vec![d1, d2, d3, d4], tdbm.all_days());
         Ok(())
     }
-
 }

@@ -1,14 +1,13 @@
+use crate::trading_date::{TradingDateBitmap, TradingDates, LOCAL_TRADING_DATE_BITMAP};
+use crate::{Error, Result};
 use chrono::prelude::*;
-use crate::{Result, Error};
-use crate::trading_date::{TradingDates, TradingDateBitmap, LOCAL_TRADING_DATE_BITMAP};
 use std::sync::Arc;
 
 /// 交易时刻集合
-/// 
+///
 /// 提供日内交易时刻的相关操作，包括查询前后时刻
 /// 日级别操作参考TradingDates
 pub trait TradingTimestamps {
-
     /// 返回时刻集合的基础单位，支持1m, 5m, 30m, 1d
     fn tick(&self) -> String;
 
@@ -16,15 +15,14 @@ pub trait TradingTimestamps {
     fn tick_minutes(&self) -> i32;
 
     /// 后一个交易时刻
-    /// 
+    ///
     /// 给定的时刻必须符合tick规则，例如当tick=5m时，ts分钟数必须为5的整数倍
     fn next_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime>;
 
     /// 前一个交易时刻
-    /// 
+    ///
     /// 给定的时刻必须符合tick规则，例如当tick=5m时，ts分钟数必须为5的整数倍
     fn prev_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime>;
-
 }
 
 lazy_static! {
@@ -35,10 +33,10 @@ lazy_static! {
 }
 
 /// 中国交易时刻集合
-/// 
+///
 /// 早晨9:30 - 11:30
 /// 下午13:00 - 15:00
-/// 
+///
 /// 初始化1分钟，5分钟，和30分钟的交易时刻集合
 /// LOCAL_TRADING_TS_1_MIN
 /// LOCAL_TRADING_TS_5_MIN
@@ -52,16 +50,15 @@ pub struct LocalTradingTimestamps {
 }
 
 lazy_static! {
-    pub static ref LOCAL_TRADING_TS_1_MIN: LocalTradingTimestamps = 
+    pub static ref LOCAL_TRADING_TS_1_MIN: LocalTradingTimestamps =
         LocalTradingTimestamps::new("1m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
-    pub static ref LOCAL_TRADING_TS_5_MIN: LocalTradingTimestamps = 
+    pub static ref LOCAL_TRADING_TS_5_MIN: LocalTradingTimestamps =
         LocalTradingTimestamps::new("5m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
-    pub static ref LOCAL_TRADING_TS_30_MIN: LocalTradingTimestamps = 
+    pub static ref LOCAL_TRADING_TS_30_MIN: LocalTradingTimestamps =
         LocalTradingTimestamps::new("30m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
 }
 
 impl LocalTradingTimestamps {
-
     pub fn new(tick: &str, tdbm: Arc<TradingDateBitmap>) -> Result<Self> {
         let tick_minutes = match tick {
             "1m" => 1,
@@ -69,7 +66,7 @@ impl LocalTradingTimestamps {
             "30m" => 30,
             _ => return Err(Error(format!("tick {} not supported", tick))),
         };
-        Ok(LocalTradingTimestamps{
+        Ok(LocalTradingTimestamps {
             tick: tick.to_owned(),
             tick_minutes,
             tdbm,
@@ -78,7 +75,6 @@ impl LocalTradingTimestamps {
 }
 
 impl TradingTimestamps for LocalTradingTimestamps {
-
     fn tick(&self) -> String {
         self.tick.clone()
     }
@@ -91,7 +87,10 @@ impl TradingTimestamps for LocalTradingTimestamps {
         if ts.minute() % self.tick_minutes() as u32 != 0 {
             return None;
         }
-        if ts.time() < *MORNING_START || ts.time() > *AFTERNOON_END || (ts.time() > *MORNING_END && ts.time() < *AFTERNOON_START) {
+        if ts.time() < *MORNING_START
+            || ts.time() > *AFTERNOON_END
+            || (ts.time() > *MORNING_END && ts.time() < *AFTERNOON_START)
+        {
             return None;
         }
         // 如果ts被选择在了上午和下午开始时刻，对取下一个tick并无影响，不需要额外处理
@@ -116,7 +115,10 @@ impl TradingTimestamps for LocalTradingTimestamps {
         if ts.minute() % self.tick_minutes() as u32 != 0 {
             return None;
         }
-        if ts.time() < *MORNING_START || ts.time() > *AFTERNOON_END || (ts.time() > *MORNING_END && ts.time() < *AFTERNOON_START) {
+        if ts.time() < *MORNING_START
+            || ts.time() > *AFTERNOON_END
+            || (ts.time() > *MORNING_END && ts.time() < *AFTERNOON_START)
+        {
             return None;
         }
         // 如果ts被选择在了上午和下午开始时刻，修正为前一tick的结束时刻
@@ -143,12 +145,10 @@ impl TradingTimestamps for LocalTradingTimestamps {
         }
         Some(prev_ts)
     }
-
 }
 
 /// 代理TradingDates方法
 impl TradingDates for LocalTradingTimestamps {
-
     fn first_day(&self) -> Option<NaiveDate> {
         self.tdbm.first_day()
     }
@@ -175,7 +175,9 @@ impl TradingDates for LocalTradingTimestamps {
 
     // 禁止向集合内插入日期
     fn add_day(&mut self, _day: NaiveDate) -> Result<()> {
-        Err(Error("insertion of trading dates forbidden on ts collections".to_owned()))
+        Err(Error(
+            "insertion of trading dates forbidden on ts collections".to_owned(),
+        ))
     }
 }
 
@@ -217,16 +219,16 @@ mod tests {
         let ts_02011500 = NaiveDateTime::from_str("2020-02-01T15:00:00")?;
         let ts_02020930 = NaiveDateTime::from_str("2020-02-02T09:30:00")?;
         let ts_02021000 = NaiveDateTime::from_str("2020-02-02T10:00:00")?;
-        
+
         assert_eq!(None, ltts.prev_tick(ts_02010800));
         assert_eq!(None, ltts.next_tick(ts_02010800));
-        
+
         assert_eq!(None, ltts.prev_tick(ts_02010930));
         assert_eq!(Some(ts_02011000), ltts.next_tick(ts_02010930));
-        
+
         assert_eq!(None, ltts.prev_tick(ts_02011000));
         assert_eq!(Some(ts_02011030), ltts.next_tick(ts_02011000));
-        
+
         assert_eq!(Some(ts_02011130), ltts.next_tick(ts_02011100));
 
         assert_eq!(Some(ts_02011100), ltts.prev_tick(ts_02011130));
@@ -236,7 +238,7 @@ mod tests {
 
         assert_eq!(Some(ts_02011130), ltts.prev_tick(ts_02011330));
         assert_eq!(Some(ts_02011400), ltts.next_tick(ts_02011330));
-        
+
         assert_eq!(Some(ts_02011430), ltts.prev_tick(ts_02011500));
         assert_eq!(Some(ts_02021000), ltts.next_tick(ts_02011500));
 
