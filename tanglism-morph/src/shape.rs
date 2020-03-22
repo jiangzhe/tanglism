@@ -1,6 +1,7 @@
-use crate::{Error, Parting, Result, Segment, Stroke, CK, K};
+use crate::{Error, Parting, Result, Segment, Stroke, CStroke, CK, K};
 use serde_derive::*;
 use tanglism_utils::TradingTimestamps;
+use chrono::NaiveDateTime;
 
 /// 单标的确定周期的数据来源
 pub trait Source {
@@ -65,14 +66,14 @@ impl<'k> PartingShaper<'k> {
         }
     }
 
-    fn consume(&mut self, k: &K) {
+    fn consume(&mut self, k: K) {
         // k1不存在
         if self.first_k.is_none() {
             self.first_k = Some(Self::k_to_ck(k));
             return;
         }
         // k1存在
-        let k1 = self.first_k.as_ref().unwrap();
+        let k1 = self.first_k.unwrap();
 
         // k2不存在
         if self.second_k.is_none() {
@@ -93,7 +94,7 @@ impl<'k> PartingShaper<'k> {
         }
 
         // k2存在
-        let k2 = self.second_k.as_ref().unwrap();
+        let k2 = self.second_k.unwrap();
 
         // k3不存在
         if self.third_k.is_none() {
@@ -118,7 +119,7 @@ impl<'k> PartingShaper<'k> {
             return;
         }
 
-        let k3 = self.third_k.as_ref().unwrap();
+        let k3 = self.third_k.unwrap();
 
         // 检查k3与k的包含关系
         let ck = Self::inclusive_neighbor_k(k3, k, self.upward);
@@ -150,14 +151,14 @@ impl<'k> PartingShaper<'k> {
 
         // 不形成分型时，将k3, k向左移两位
         self.upward = k.high > k3.high;
-        self.first_k = Some(k3.clone());
+        self.first_k = Some(k3);
         self.second_k = Some(Self::k_to_ck(k));
         self.third_k = None;
     }
 
     fn run(mut self) -> Result<PartingSeq> {
         for k in self.ks.iter() {
-            self.consume(k);
+            self.consume(*k);
         }
 
         // 结束所有k线分析后，依然存在第三根K线，说明此时三根K线刚好构成顶底分型
@@ -195,7 +196,8 @@ impl<'k> PartingShaper<'k> {
     }
 
     /// 辅助函数，将单个K线转化为合并K线
-    fn k_to_ck(k: &K) -> CK {
+    #[inline]
+    fn k_to_ck(k: K) -> CK {
         CK {
             start_ts: k.ts,
             end_ts: k.ts,
@@ -207,7 +209,7 @@ impl<'k> PartingShaper<'k> {
     }
 
     /// 辅助函数，判断相邻K线是否符合包含关系，并在符合情况下返回包含后的合并K线
-    fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
+    fn inclusive_neighbor_k(k1: CK, k2: K, upward: bool) -> Option<CK> {
         let extremum_ts = if k1.high >= k2.high && k1.low <= k2.low {
             k1.extremum_ts
         } else if k2.high >= k1.high && k2.low <= k1.low {
@@ -283,11 +285,11 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             });
         }
         let mut pts_iter = self.pts.body.iter();
-        let first = pts_iter.next().unwrap().clone();
-        self.start = Some(first.clone());
+        let first = *pts_iter.next().unwrap();
+        self.start = Some(first);
         self.tail.push(first);
         while let Some(pt) = pts_iter.next() {
-            self.consume(pt);
+            self.consume(*pt);
         }
         Ok(StrokeSeq {
             body: self.sks,
@@ -298,8 +300,8 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         })
     }
 
-    fn consume(&mut self, pt: &Parting) {
-        self.tail.push(pt.clone());
+    fn consume(&mut self, pt: Parting) {
+        self.tail.push(pt);
         if pt.top != self.start().top {
             self.consume_diff_dir(pt);
         } else {
@@ -307,7 +309,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         }
     }
 
-    fn consume_diff_dir(&mut self, pt: &Parting) {
+    fn consume_diff_dir(&mut self, pt: Parting) {
         if self.is_start_neighbor(pt) {
             // 这里不做变化
             // 可以保留的可能性是起点跳至pt点
@@ -322,14 +324,14 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         // 成笔
         let new_sk = Stroke {
             start_pt: self.start.take().unwrap(),
-            end_pt: pt.clone(),
+            end_pt: pt,
         };
-        self.start = Some(pt.clone());
+        self.start = Some(pt);
         self.tail.clear();
         self.sks.push(new_sk);
     }
 
-    fn consume_same_dir(&mut self, pt: &Parting) {
+    fn consume_same_dir(&mut self, pt: Parting) {
         if self.is_start_neighbor(pt) {
             return;
         }
@@ -342,13 +344,13 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
 
         if let Some(last_sk) = self.sks.last_mut() {
             // 有笔，需要修改笔终点
-            last_sk.end_pt = pt.clone();
+            last_sk.end_pt = pt;
         }
-        self.start.replace(pt.clone());
+        self.start.replace(pt);
         self.tail.clear();
     }
 
-    fn is_start_neighbor(&self, pt: &Parting) -> bool {
+    fn is_start_neighbor(&self, pt: Parting) -> bool {
         if let Some(start) = self.start.as_ref() {
             if let Some(indep_ts) = self.tts.next_tick(start.end_ts) {
                 if indep_ts < pt.start_ts {
@@ -360,101 +362,24 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
     }
 
     #[inline]
-    fn start(&self) -> &Parting {
-        self.start.as_ref().unwrap()
+    fn start(&self) -> Parting {
+        self.start.unwrap()
     }
 }
 
 /// 将笔序列解析为线段序列
 pub fn sks_to_sgs(sks: &StrokeSeq) -> Result<SegmentSeq> {
-    unimplemented!()
+    SegmentShaper::new(sks).run()
 }
 
-enum SegmentState {
-    Empty,
-    Undetermined {
-        start_pt: Parting,
-        end_pt: Parting,
-        gap: bool,
-    },
-}
-
-impl SegmentState {
-
-    fn process(mut self, shaper: &mut SegmentShaper, input: Stroke) -> SegmentState {
-        unimplemented!()
-    }
-}
-
-struct SegmentShaper<'s> {
-    // 输入的笔序列
+pub struct SegmentShaper<'s> {
     sks: &'s StrokeSeq,
-    // 已确认的线段序列
-    sgs: Vec<Segment>,
-    // 分析线段的中间结果 
-    curr_sg: SegmentState,
-    // 无法构成线段的头部笔
-    head: Vec<Stroke>,
-    // 无法构成线段的尾部笔
-    tail: Vec<Stroke>,
-    // 主序列，存储组成线段的所有笔
-    ms: Vec<Stroke>,
-    // 特征序列，存储线段的特征序列
-    // 当线段向上时，由所有向下笔构成
-    // 当线段向下时，由所有向上笔构成
-    // 当且仅当特征序列构成顶分型时，结束向上线段
-    // 当且仅当特征序列构成底分型时，结束向下线段
-    // todo
-    // 尤其需要注意的时，特征序列的顶底分型与K线不完全一样
-    // 其中，转折点前后的特征序列不可以应用包含关系，
-    // 因为转折点前后的特征序列的性质并不相同（分属于不同的笔）
-    // 详细解释见71课
-    cs: Vec<Stroke>,
 }
 
-/// 判断线段的方法：
-/// 1. 根据起始笔，记录为线段走向。向上笔开启向上线段，向下笔开启向下线段
-/// 2. 第二笔，且其后所有偶数笔都属于特征序列，可进行以下判断
-///    1）结束点反向超越起点，
-///    则根据当前是否有未确定线段执行：
-///    a）有未确定线段，则转化为确定线段（其终点必为该特征序列笔的起点）
-///       且由该特征序列笔的起点，开始重新判断新线段。
-///    b）无未确定线段，
-///    如果当前未成线段，且存在点低于起点，则该点以前的所有笔
-///    都是起点以前未知走势残笔。可丢弃，从该最低点开始判断新线段
-///    2）结束点没有反向超越起点，表示该走势仍持续
-///    需根据是否有未确定线段执行：
-///    a）有未确定线段：将当前笔合并进线段的特征序列，并判断
-///    特征序列是否存在跳空标记：
-///    a.1) 存在跳空标记，则判断跳空标记后反向特征序列是否形成顺势分型
-///        原上升线段：下降笔构成序列，是否存在底分型，
-///        原下降线段：上升笔构成序列，是否存在顶分型。
-///    a.1.1）形成，将跳空标记的未确定线段转化未确定线段，回补跳空标记后所有笔。
-///    a.2.2) 未形成（未形成的判断可能需要考虑多种情况），取消跳空标记，继续下一笔的分析
-///    a.2) 不存在跳空标记，则判断特征序列是否已构成分型（向上顶分型，向下底分型）
-///    a.2.1）若未构成，继续下一笔的分析
-///    a.2.2）若构成，判断该分型左半部分是否有跳空
-///    a.2.2.1）若无跳空，则转化该未确定线段为确定线段，需要回补从线段终点开始的已消费的笔
-///    2.2.2.2) 若有跳空，则记录跳空标记，继续下一笔的分析
-/// 3. 第三笔，且其后所有奇数笔都与起始笔通向，则进行一下判断
-///    1）如结束点超越同向的最值点（上升最大值，下降最小值），则构成由起点到该结束点的未确定线段，
-///       如之前已存在未确定线段：
-///       a）存在跳空标记，比较并记录跳空后最值点。
-///       b）不存在跳空标记，替换之。
-///    2）如果不超越，继续下一笔
-/// todo: 
-/// 逻辑过于复杂，考虑使用状态机保证代码的清晰和正确
-/// 考虑特殊处理开盘跳空情景（如相邻分型组成笔）
 impl<'s> SegmentShaper<'s> {
     fn new(sks: &'s StrokeSeq) -> Self {
         SegmentShaper{
             sks,
-            sgs: Vec::new(),
-            curr_sg: SegmentState::Empty,
-            head: Vec::new(),
-            tail: Vec::new(),
-            ms: Vec::new(),
-            cs: Vec::new(),
         }
     }
 
@@ -466,34 +391,428 @@ impl<'s> SegmentShaper<'s> {
             });
         }
 
-        let mut sks_iter = self.sks.body.iter();
-        let first = sks_iter.next().unwrap().clone();
-        self.ms.push(first);
-
-        while let Some(sk) = sks_iter.next() {
-            self.consume(sk);
+        let mut body = Vec::new();
+        let input = &self.sks.body;
+        let len = input.len();
+        let mut ps = PendingSegment::new(input[0]);
+        let mut index = 1;
+        while index < len {
+            let action = ps.add(input[index]);
+            if action.complete {
+                body.push(action.sg.expect("segment not found"));
+                // reset index to new start
+                if let Some(new_start) = self.rfind_sk_index(index as i32, ps.end_pt.start_ts) {
+                    index = new_start as usize;
+                }
+            }
+            index += 1;
         }
 
-        unimplemented!()
-    }
-
-    fn consume(&mut self, sk: &Stroke) {
-        debug_assert!(!self.ms.is_empty());
-        // 当前线段走势
-        let upward = self.ms[0].start_pt.extremum_price < self.ms[0].end_pt.extremum_price;
-        // 当前笔走势
-        let sk_upward = sk.start_pt.extremum_price < sk.end_pt.extremum_price;
-        if upward != sk_upward {
-            // 反向，则为特征序列
-            self.cs.push(sk.clone());
-            // 当特征序列结束点超过起点（向上线段低于起点；向下线段高于起点）时
-            // 表明起点
+        let mut rest_sks = Vec::new();
+        if let Some(last_sg) = body.last() {
+            if let Some(pending_sg) = ps.action_none().sg {
+                if last_sg.end_pt.extremum_ts < pending_sg.end_pt.extremum_ts {
+                    // 将剩余部分加入最终结果
+                    body.push(pending_sg);
+                    if let Some(rest_start) = self.rfind_sk_index((len-1) as i32, pending_sg.end_pt.extremum_ts) {
+                        for i in rest_start as usize..len {
+                            rest_sks.push(input[i]);
+                        }
+                    }
+                }
+            }
+        }
+        
+        let tail = if rest_sks.is_empty() && self.sks.tail.is_none() {
+            None
         } else {
-            // 正向，主序列，延续走势
-        }
-        self.cs.push(sk.clone());
+            Some(StrokeSeq{
+                body: rest_sks,
+                tail: self.sks.tail.clone(),
+            })
+        };
+
+        Ok(SegmentSeq{
+            body,
+            tail,
+        })
     }
 
+    fn rfind_sk_index(&self, mut index: i32, start_ts: NaiveDateTime) -> Option<i32> {
+        while index >= 0 {
+            if self.sks.body[index as usize].start_pt.extremum_ts == start_ts {
+                return Some(index);
+            }
+            index -= 1;
+        }
+        None
+    } 
+}
+
+
+#[derive(Debug)]
+struct SegmentAction {
+    // 当前线段
+    sg: Option<Segment>,
+    // 是否完成
+    complete: bool,
+}
+
+#[derive(Debug)]
+struct PendingSegment {
+    // 起始点
+    start_pt: Parting,
+    // 终止点
+    end_pt: Parting,
+    // 是否存在跳空
+    gap_sg: Option<Segment>,
+    // 跳空序列
+    gap_cs: Vec<CStroke>,
+    // 是否可完成，只要有连续三笔符合定义，则可视为可完成
+    completable: bool,
+    // 走向
+    upward: bool,
+    // 当前笔的奇偶性
+    odd: bool,
+    // 主序列，存储组成线段的所有笔
+    ms: Vec<Stroke>,
+    // 特征序列，存储线段的特征序列
+    // 当线段向上时，由所有向下笔构成
+    // 当线段向下时，由所有向上笔构成
+    // 当且仅当特征序列构成顶分型时，结束向上线段
+    // 当且仅当特征序列构成底分型时，结束向下线段
+    // 尤其需要注意的时，特征序列的顶底分型与K线不完全一样
+    // 其中，转折点前后的特征序列不可以应用包含关系，
+    // 因为转折点前后的特征序列的性质并不相同（分属于不同的笔）
+    // 详细解释见71课
+    cs: Vec<CStroke>,
+}
+
+impl PendingSegment {
+    // 通过一笔构造线段
+    fn new(sk: Stroke) -> Self {
+        PendingSegment{
+            start_pt: sk.start_pt,
+            end_pt: sk.end_pt,
+            gap_sg: None,
+            gap_cs: Vec::new(),
+            completable: false,
+            upward: sk.start_pt.extremum_price < sk.end_pt.extremum_price,
+            odd: true,
+            ms: Vec::new(),
+            cs: Vec::new(),
+        }
+    }
+
+    // 重置，gap_sg与gap_cs需要保留
+    fn reset_start(&mut self, sk: Stroke) {
+        self.start_pt = sk.start_pt;
+        self.end_pt = sk.end_pt;
+        self.completable = false;
+        self.upward = sk.start_pt.extremum_price < sk.end_pt.extremum_price;
+        self.odd = true;
+        self.ms.clear();
+        self.cs.clear();
+    }
+
+    fn reset_gap(&mut self) {
+        self.gap_sg = None;
+        self.gap_cs.clear();
+    }
+
+    fn add(&mut self, sk: Stroke) -> SegmentAction {
+        // 首先将笔加入主序列
+        self.ms.push(sk);
+        self.odd = !self.odd;
+        let action = if self.odd {
+            self.add_odd(sk)
+        } else {
+            self.add_even(sk)
+        };
+        action
+    }
+
+    // 处理与线段同向的笔
+    fn add_odd(&mut self, sk: Stroke) -> SegmentAction {
+        // 是否存在跳空
+        if self.gap_sg.is_some() {
+            // 跳空后的特征序列使用奇数笔，与线段同向
+            let csk0 = Self::cs_sk(&sk);
+            // 跳空后，走出相反分型
+            if self.cs_pt(&self.gap_cs, &csk0, false) {
+                let new_start_ts = self.gap_sg.as_ref().unwrap().end_pt.extremum_ts;
+                let new_start = *self.find_sk(new_start_ts).expect("next start stroke not found");
+                return self.action_reset(new_start);
+            }
+            // 存在跳空且继续突破
+            if self.exceeds_end(sk.end_pt.extremum_price) {
+                self.end_pt = sk.end_pt;
+                self.completable = true;
+                return self.action_reset(sk);
+            }
+            // 跳空特征序列为空，直接插入
+            if self.gap_cs.is_empty() {
+                self.gap_cs.push(csk0);
+                return self.action_none();
+            }
+            let last_csk = self.gap_cs.last().unwrap();
+            // 判断包含关系，合并插入
+            // 跳空后的合并关系与线段走向相反
+            if let Some(csk) = Self::cs_incl(&last_csk, &csk0, !self.upward) {
+                *self.gap_cs.last_mut().unwrap() = csk;
+            } else {
+                self.gap_cs.push(csk0);
+            }
+            return self.action_none();
+        }
+
+        // 突破最高/低点
+        if self.exceeds_end(sk.end_pt.extremum_price) {
+            self.end_pt = sk.end_pt;
+            self.completable = true;
+            // self.reset_gap();
+            return self.action_reset(sk);
+        }
+        // 未突破
+        self.action_none()
+    }
+
+    // 处理与线段异向的笔
+    fn add_even(&mut self, sk: Stroke) -> SegmentAction {
+        // 与起始价格交叉
+        if self.cross_over_start(sk.end_pt.extremum_price) {
+            // 无论当前是否存在线段(self.completable == true)
+            // 选择当前线段（无线段则为第一笔）后的第一笔作为起始笔
+            let new_start = *self.find_sk(self.end_pt.extremum_ts).expect("next start stroke not found");
+            return self.action_reset(new_start);
+        }
+
+        // 不与起始价格交叉
+        // 特征序列不为空，合并进特征序列
+        if !self.cs.is_empty() {
+            // 当前笔转化为特征序列合成笔
+            let csk0 = Self::cs_sk(&sk);
+
+            // 检查与特征序列最后一笔的关系
+            // 包含关系需要放到分型检查之后，添加序列之前
+
+            // 检查分型关系
+            // 上升线段出现顶分型，下降线段出现底分型
+            if self.cs_pt(&self.cs, &csk0, true) {
+                let new_start = *self.find_sk(self.end_pt.extremum_ts).expect("next start stroke not found");
+                return self.action_reset(new_start);
+            }
+
+            // 分型关系不满足的情况下，检查最后一个和倒数第二个的包含关系，并进行条件合并
+            if self.cs.len() >= 2 {
+                if let Some(last_csk) = Self::cs_incl(&self.cs[self.cs.len()-2], &self.cs[self.cs.len()-1], self.upward) {
+                    self.cs.pop().unwrap();
+                    *self.cs.last_mut().unwrap() = last_csk;
+                }
+            }
+
+            // 检查跳空关系
+            if self.cs_gap(&self.cs[self.cs.len()-1], &csk0) {
+                self.gap_sg.replace(Segment{
+                    start_pt: self.start_pt,
+                    end_pt: self.end_pt,
+                });
+            }
+            
+            // 插入特征序列
+            self.cs.push(csk0);
+
+            return self.action_none();
+        }
+
+        // 特征序列为空
+        self.cs.push(Self::cs_sk(&sk));
+        self.action_none()
+    }
+
+    // 线段起始价格
+    #[inline]
+    fn start_price(&self) -> f64 {
+        self.start_pt.extremum_price
+    }
+
+    // 线段终止价格
+    #[inline]
+    fn end_price(&self) -> f64 {
+        self.end_pt.extremum_price
+    }
+
+    // 给定价格与起始价格交叉
+    #[inline]
+    fn cross_over_start(&self, price: f64) -> bool {
+        if self.upward {
+            price < self.start_price()
+        } else {
+            price > self.start_price()
+        }
+    }
+
+    // 给定价格超越终止价格
+    #[inline]
+    fn exceeds_end(&self, price: f64) -> bool {
+        self.exceeds(self.end_price(), price)
+    }
+
+    // 相邻特征序列是否为跳空关系
+    #[inline]
+    fn cs_gap(&self, csk1: &CStroke, csk2: &CStroke) -> bool {
+        if self.upward {
+            csk1.high_pt.extremum_price < csk2.low_pt.extremum_price
+        } else {
+            csk1.low_pt.extremum_price > csk2.high_pt.extremum_price
+        }
+    }
+
+    // 后者价格是否超越前者（上升线段大于，下降线段小于）
+    #[inline]
+    fn exceeds(&self, p1: f64, p2: f64) -> bool {
+        if self.upward {
+            p1 < p2
+        } else {
+            p2 < p1
+        }
+    }
+
+    // 两笔是否包含，并返回合并后的笔，
+    // 合并规则根据走向确定，向上走向合并向上，向下走向合并向下
+    #[inline]
+    fn cs_incl(csk1: &CStroke, csk2: &CStroke, upward: bool) -> Option<CStroke> {        
+        // csk1包含csk2
+        if csk1.high_pt.extremum_price >= csk2.high_pt.extremum_price && csk1.low_pt.extremum_price <= csk2.low_pt.extremum_price {
+            let csk = if upward {
+                CStroke{
+                    high_pt: csk1.high_pt,
+                    low_pt: csk2.low_pt,
+                }
+            } else {
+                CStroke {
+                    high_pt: csk2.high_pt,
+                    low_pt: csk1.low_pt,
+                }
+            };
+            return Some(csk);
+        }
+
+        // csk2包含csk1
+        if csk1.high_pt.extremum_price <= csk2.high_pt.extremum_price && csk1.low_pt.extremum_price >= csk2.low_pt.extremum_price {
+            let csk = if upward {
+                CStroke{
+                    high_pt: csk2.high_pt,
+                    low_pt: csk1.low_pt,
+                }
+            } else {
+                CStroke{
+                    high_pt: csk1.high_pt,
+                    low_pt: csk2.low_pt,
+                }
+            };
+            return Some(csk);
+        }
+        None
+    }
+
+    // 通过单笔生成合成笔
+    #[inline]
+    fn cs_sk(sk: &Stroke) -> CStroke {
+        if sk.start_pt.extremum_price < sk.end_pt.extremum_price {
+            CStroke{
+                high_pt: sk.end_pt,
+                low_pt: sk.start_pt,
+            }
+        } else {
+            CStroke{
+                high_pt: sk.start_pt,
+                low_pt: sk.end_pt,
+            }
+        }
+    }
+
+    // 特征序列走出正向分型
+    // 向上线段走出顶分型，向下线段走出底分型
+    // fn cs_seq_pt(&self, sk3: &CStroke) -> bool {
+    //     let len = self.cs.len();
+    //     if len < 2 {
+    //         return false;
+    //     }
+    //     let sk1 = &self.cs[len-2];
+    //     let sk2 = &self.cs[len-1];
+    //     if self.upward {
+    //         // 顶分型
+    //         sk1.high_pt.extremum_price < sk2.high_pt.extremum_price && sk2.high_pt.extremum_price > sk3.high_pt.extremum_price
+    //     } else {
+    //         // 底分型
+    //         sk1.low_pt.extremum_price > sk2.low_pt.extremum_price && sk2.low_pt.extremum_price < sk3.low_pt.extremum_price
+    //     }
+    // }
+
+    // 跳空序列走出反向分型
+    // 向上线段跳空后走出底分型，或向下线段跳空后走出顶分型
+    // fn gap_cs_rev_pt(&self, sk3: &CStroke) -> bool {
+    //     let len = self.gap_cs.len();
+    //     if len < 2 {
+    //         return false;
+    //     }
+    //     let sk1 = &self.gap_cs[len-2];
+    //     let sk2 = &self.gap_cs[len-1];
+    //     if self.upward {
+    //         // 底分型
+    //         sk1.low_pt.extremum_price > sk2.low_pt.extremum_price && sk2.low_pt.extremum_price < sk3.low_pt.extremum_price
+    //     } else {
+    //         // 顶分型
+    //         sk1.high_pt.extremum_price < sk2.high_pt.extremum_price && sk2.high_pt.extremum_price > sk3.high_pt.extremum_price
+    //     }
+    // }
+
+    // 特征序列分型判断
+    // 跳空后特征序列判断forward=false
+    fn cs_pt(&self, cs: &[CStroke], sk3: &CStroke, forward: bool) -> bool {
+        let len = cs.len();
+        if len < 2 {
+            return false;
+        }
+        let sk1 = &cs[len-2];
+        let sk2 = &cs[len-1];
+        let top_pt_check = (self.upward && forward) || (!self.upward && !forward);
+        if top_pt_check {
+            // 顶分型
+            sk1.high_pt.extremum_price < sk2.high_pt.extremum_price && sk2.high_pt.extremum_price > sk3.high_pt.extremum_price
+        } else {
+            // 底分型
+            sk1.low_pt.extremum_price > sk2.low_pt.extremum_price && sk2.low_pt.extremum_price < sk3.low_pt.extremum_price
+        }
+    }
+
+    fn action_none(&self) -> SegmentAction {
+        let sg = if self.completable {
+            Some(Segment{
+                start_pt: self.start_pt,
+                end_pt: self.end_pt,
+            })
+        } else {
+            None
+        };
+        SegmentAction{
+            sg,
+            complete: false,
+        }
+    }
+
+    fn action_reset(&mut self,  new_start: Stroke) -> SegmentAction {
+        let action = self.action_none();
+        self.reset_start(new_start);
+        self.reset_gap();
+        action
+    }
+
+    // 从主序列中找出指定开始时间的笔
+    fn find_sk(&self, start_ts: NaiveDateTime) -> Option<&Stroke> {
+        self.ms.iter().find(|msk| msk.start_pt.extremum_ts == start_ts)
+    }
 }
 
 #[cfg(test)]
