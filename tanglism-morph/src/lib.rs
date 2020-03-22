@@ -11,7 +11,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// 缠论的基础概念
 /// 在缠论中，K线的开盘价和收盘价被忽略，仅包含时刻，最高点，最低点
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct K {
     pub ts: NaiveDateTime,
     pub low: f64,
@@ -25,7 +25,7 @@ pub struct K {
 /// 低价低时，满足包含原则，两K线可视为1条K线。在上升时，取两高点的高点为新K线高点，
 /// 取两低点的高点为新K线低点。在下降时，取两高点的低点为新K线高点，取两低点的低点
 /// 为新K线的低点。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CK {
     pub start_ts: NaiveDateTime,
     pub end_ts: NaiveDateTime,
@@ -45,7 +45,7 @@ pub struct CK {
 /// 分型实际可由多于3根K线构成，只要两侧的K线满足包含原则。
 /// 按照缠论的严格定义，分型仅适用与最小级别的K线图，即1分钟K线图上，后续分析都由
 /// 1分钟K线图向上递归构成更大的形态。
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Parting {
     // 分型起始时刻，已考虑K线包含关系
     pub start_ts: NaiveDateTime,
@@ -66,10 +66,20 @@ pub struct Parting {
 /// 缠论的基础概念
 /// 由相邻的顶分型与底分型构成，不可同底或同顶，同时需满足两分型间有至少1根独立K线，
 /// 即存在1条K线，不属于两侧的分型，且不能因为包含原则属于两侧的分型。
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Stroke {
     pub start_pt: Parting,
     pub end_pt: Parting,
+}
+
+/// 合并笔
+/// 
+/// 在特征序列相邻笔出现包含关系时，合并为一笔
+/// 此时笔并不具有方向性
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CStroke {
+    pub high_pt: Parting,
+    pub low_pt: Parting,
 }
 
 /// 线段
@@ -84,11 +94,10 @@ pub struct Stroke {
 /// 顶分型的顶即向上线段的结束。
 /// 底分型的底即向下线段的结束。
 /// 当确定线段终点后，该终点后的笔不再归属于该线段。
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Segment {
-    pub start_sk: Stroke,
-    pub end_sk: Stroke,
-    pub determined: bool,
+    pub start_pt: Parting,
+    pub end_pt: Parting,
 }
 
 /// 中枢
