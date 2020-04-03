@@ -24,3 +24,6 @@ Cargo.lock
 *.db
 
 web/data/
+
+# hide env files in commits
+.env
