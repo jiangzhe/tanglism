@@ -1,5 +1,4 @@
 use actix_web::error::ResponseError;
-use actix_web::http::StatusCode;
 use actix_web::HttpResponse;
 use derive_more::Display;
 use serde_derive::*;
@@ -7,34 +6,107 @@ use std::fmt;
 
 /// the error type for web server
 #[derive(Debug)]
-pub struct Error(String);
+pub enum Error {
+    Simple(ErrorKind),
+    Custom(ErrorKind, String),
+    Nested(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl Error {
+    // construct simple error
+    pub fn simple(kind: ErrorKind) -> Error {
+        Error::Simple(kind)
+    }
+
+    // construct custom error with description
+    pub fn custom(kind: ErrorKind, err: String) -> Error {
+        Error::Custom(kind, err)
+    }
+
+    // construct nested error
+    pub fn nested(err: Box<dyn std::error::Error + Send + Sync>) -> Error {
+        Error::Nested(err)
+    }
+
+    // helper function to convert kind and error message into http response
+    pub fn kind_to_response(kind: ErrorKind, err: &str) -> HttpResponse {
+        match kind {
+            ErrorKind::BadRequest => HttpResponse::BadRequest().json::<ErrorResponse>(err.into()),
+            ErrorKind::NotFound => HttpResponse::NotFound().json::<ErrorResponse>(err.into()),
+            ErrorKind::InternalServerError => {
+                HttpResponse::InternalServerError().json::<ErrorResponse>(err.into())
+            }
+            ErrorKind::IO => HttpResponse::InternalServerError()
+                .json::<ErrorResponse>((format!("IO Error: {}", err)).into()),
+            ErrorKind::Diesel => HttpResponse::InternalServerError()
+                .json::<ErrorResponse>(format!("Diesel Error: {}", err).into()),
+            ErrorKind::Jqdata => HttpResponse::InternalServerError()
+                .json::<ErrorResponse>(format!("Jqdata Error: {}", err).into()),
+        }
+    }
+
+    #[allow(non_snake_case)]
+    pub fn FailedAcquireDbConn() -> Error {
+        Error::Custom(
+            ErrorKind::InternalServerError,
+            "cannot acquire database connection".into(),
+        )
+    }
+
+    #[allow(non_snake_case)]
+    pub fn OperationNotSupported() -> Error {
+        Error::Custom(
+            ErrorKind::InternalServerError,
+            "operation not supoorted".into(),
+        )
+    }
+}
 
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{}", self)
+        match self {
+            Error::Simple(kind) => write!(fmt, "{}", kind),
+            Error::Custom(kind, s) => write!(fmt, "{}: {}", kind, s),
+            Error::Nested(err) => write!(fmt, "{}", err),
+        }
     }
 }
 
 impl std::error::Error for Error {}
 
+#[derive(Debug, Display, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum ErrorKind {
+    BadRequest,
+    NotFound,
+    InternalServerError,
+    IO,
+    Diesel,
+    Jqdata,
+}
+
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Error {
-        Error(format!("IO error: {}", err))
+        Error::custom(ErrorKind::IO, err.to_string())
     }
 }
 
-impl From<rusqlite::Error> for Error {
-    fn from(err: rusqlite::Error) -> Error {
-        Error(format!("SQL error: {}", err))
+impl From<diesel::result::Error> for Error {
+    fn from(err: diesel::result::Error) -> Error {
+        Error::custom(ErrorKind::Diesel, err.to_string())
     }
 }
 
-#[derive(Debug, Display, PartialEq)]
-#[allow(dead_code)]
-pub enum ApiError {
-    BadRequest(String),
-    NotFound(String),
-    InternalServerError(String),
+impl From<jqdata::Error> for Error {
+    fn from(err: jqdata::Error) -> Error {
+        Error::custom(ErrorKind::Jqdata, err.to_string())
+    }
+}
+
+impl<E: std::fmt::Debug> From<actix_threadpool::BlockingError<E>> for Error {
+    fn from(err: actix_threadpool::BlockingError<E>) -> Error {
+        Error::custom(ErrorKind::InternalServerError, err.to_string())
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -42,23 +114,30 @@ pub struct ErrorResponse {
     errors: Vec<String>,
 }
 
-impl ResponseError for ApiError {
+// implements ResponseError to allow converting error to response
+impl ResponseError for Error {
     fn error_response(&self) -> HttpResponse {
         match self {
-            ApiError::BadRequest(err) => {
-                HttpResponse::BadRequest().json::<ErrorResponse>(err.into())
+            Error::Simple(kind) => Self::kind_to_response(*kind, "no message"),
+            Error::Custom(kind, err) => Self::kind_to_response(*kind, err),
+            Error::Nested(err) => {
+                Self::kind_to_response(ErrorKind::InternalServerError, &err.to_string())
             }
-            ApiError::NotFound(msg) => HttpResponse::NotFound().json::<ErrorResponse>(msg.into()),
-            _ => HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR),
         }
     }
 }
 
-impl From<&String> for ErrorResponse {
-    fn from(err: &String) -> Self {
+impl From<&str> for ErrorResponse {
+    fn from(err: &str) -> Self {
         ErrorResponse {
             errors: vec![err.into()],
         }
+    }
+}
+
+impl From<String> for ErrorResponse {
+    fn from(err: String) -> Self {
+        ErrorResponse { errors: vec![err] }
     }
 }
 

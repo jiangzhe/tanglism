@@ -21,12 +21,6 @@ impl From<chrono::ParseError> for Error {
     }
 }
 
-impl From<jqdata::Error> for Error {
-    fn from(err: jqdata::Error) -> Error {
-        Error(format!("{}", err))
-    }
-}
-
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Error {
         Error(format!("{}", err))
