@@ -4,7 +4,9 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use serde_derive::*;
 use crate::models::StockPriceTick;
-use jqdata::JqdataClient;
+use jqdata::{JqdataClient, GetPricePeriod};
+use tanglism_utils::{start_of_day_str, end_of_day_str, parse_date_from_str};
+use actix_web::web;
 
 #[derive(Debug, Deserialize)]
 pub struct Path {
@@ -18,7 +20,7 @@ pub struct Param {
 }
 
 #[derive(Debug, Serialize, Deserialize, Queryable)]
-pub struct Price {
+pub struct StockPrice {
     pub dt: NaiveDate,
     pub open: BigDecimal,
     pub close: BigDecimal,
@@ -26,14 +28,14 @@ pub struct Price {
     pub low: BigDecimal,
 }
 
-type PriceColumns = (
+type StockPriceColumns = (
     stock_daily_prices::dt,
     stock_daily_prices::open,
     stock_daily_prices::close,
     stock_daily_prices::high,
     stock_daily_prices::low,
 );
-const PRICE_COLUMNS: PriceColumns = (
+const STOCK_PRICE_COLUMNS: StockPriceColumns = (
     stock_daily_prices::dt,
     stock_daily_prices::open,
     stock_daily_prices::close,
@@ -41,53 +43,26 @@ const PRICE_COLUMNS: PriceColumns = (
     stock_daily_prices::low,
 );
 
-pub type Response = super::Response<Price>;
+pub type Response = super::Response<StockPrice>;
 
-pub fn prices(
-    pool: &DbPool,
-    input_code: &str,
-    start_dt: NaiveDate,
-    end_dt: NaiveDate,
-) -> Result<Response> {
-    use crate::schema::stock_daily_prices::dsl::*;
-    use diesel::prelude::*;
-
-    if let Some(conn) = pool.try_get() {
-        let data = stock_daily_prices
-            .filter(code.eq(input_code).and(dt.ge(start_dt)).and(dt.le(end_dt)))
-            .order(dt.asc())
-            .select(PRICE_COLUMNS)
-            .load::<Price>(&conn)?;
-        return Ok(Response {
-            code: input_code.to_string(),
-            tick: "daily".into(),
-            start_dt,
-            end_dt,
-            data: data,
-        });
-    }
-    Err(Error::FailedAcquireDbConn())
-}
-
-pub struct PriceQuery {
+pub struct StockPriceQuery {
     pub code: String,
     pub start_dt: NaiveDate,
     pub end_dt: NaiveDate,
 }
 
-
 use diesel::prelude::*;
-impl PriceQuery {
+impl StockPriceQuery {
     
     // synchronous db query of prices
-    pub fn query_db_prices(&self, pool: &DbPool) -> Result<Vec<Price>> {
+    pub fn query_db_prices(&self, pool: &DbPool) -> Result<Vec<StockPrice>> {
         use crate::schema::stock_daily_prices::dsl::*;
         if let Some(conn) = pool.try_get() {
             let data = stock_daily_prices
                 .filter(code.eq(&self.code).and(dt.ge(self.start_dt)).and(dt.le(self.end_dt)))
                 .order(dt.asc())
-                .select(PRICE_COLUMNS)
-                .load::<Price>(&conn)?;
+                .select(STOCK_PRICE_COLUMNS)
+                .load::<StockPrice>(&conn)?;
             return Ok(data);
         }
         Err(Error::FailedAcquireDbConn())
@@ -110,19 +85,27 @@ impl PriceQuery {
         Err(Error::FailedAcquireDbConn())
     }
 
-    pub async fn query_api_prices(&self, api: &JqdataClient) -> Result<Vec<Price>> {
-        api.execute()
-        // todo
+    pub async fn query_api_prices(&self, api: &JqdataClient) -> Result<Vec<StockPrice>> {
+        let resp = api.execute(GetPricePeriod{
+            code: self.code.to_owned(),
+            unit: "1d".to_owned(),
+            date: start_of_day_str(self.start_dt),
+            end_date: end_of_day_str(self.end_dt),
+            fq_ref_date: None,
+        }).await?;
+        
+        let mut data = Vec::new();
+        for r in resp.into_iter() {
+            let dt = parse_date_from_str(&r.date)?;
+            data.push(StockPrice{
+                dt,
+                open: r.open,
+                close: r.close,
+                high: r.high,
+                low: r.low
+            })
+        }
+        Ok(data)
     }
 }
 
-mod a {
-    pub struct GetPricePeriod {
-        pub code: String,
-        pub unit: String,
-        pub date: String,
-        pub end_date: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub fq_ref_date: Option<String>,
-    }
-}
