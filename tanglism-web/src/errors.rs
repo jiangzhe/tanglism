@@ -75,7 +75,6 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 #[derive(Debug, Display, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
 pub enum ErrorKind {
     BadRequest,
     NotFound,
@@ -100,6 +99,12 @@ impl From<diesel::result::Error> for Error {
 impl From<jqdata::Error> for Error {
     fn from(err: jqdata::Error) -> Error {
         Error::custom(ErrorKind::Jqdata, err.to_string())
+    }
+}
+
+impl From<tanglism_utils::Error> for Error {
+    fn from(err: tanglism_utils::Error) -> Error {
+        Error::custom(ErrorKind::InternalServerError, err.to_string())
     }
 }
 

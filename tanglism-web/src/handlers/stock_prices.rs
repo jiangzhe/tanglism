@@ -28,6 +28,13 @@ pub async fn api_get_stock_daily_prices(
         .end_dt
         .unwrap_or_else(|| chrono::Local::today().naive_local() + chrono::Duration::days(1));
     
+    let query = daily::StockPriceQuery{
+        code,
+        start_dt: req.start_dt,
+        end_dt,
+    };
+    // todo
+
     let resp = web::block(move || daily::prices(&pool, &code, req.start_dt, end_dt)).await?;
     respond_json(resp)
 }
