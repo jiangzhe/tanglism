@@ -52,11 +52,16 @@ pub async fn get_stock_daily_prices(
     end_dt: NaiveDate,
 ) -> Result<Vec<daily::StockPrice>> {
     let code = Arc::new(code.to_owned());
-    // 起始时间大于结束时间
+    // 起始时间大于结束时间或当天
     if start_dt > end_dt {
         return Err(Error::Custom(
             ErrorKind::BadRequest,
             format!("start_dt {} > end_dt {}", start_dt, end_dt),
+        ));
+    } else if start_dt >= chrono::Local::today().naive_local() {
+        return Err(Error::custom(
+            ErrorKind::BadRequest,
+            format!("start_dt {} >= current day not supported", start_dt),
         ));
     }
 
@@ -68,9 +73,9 @@ pub async fn get_stock_daily_prices(
     if let Some(period) = period {
         // 数据库中存在时间段，说明已进行过查询，则仅进行增量查询并插入
 
-        // 当且仅当数据库中开始日期的前一个交易日晚于或等于给定的起始日期，则进行API查询
+        // 当且仅当查询起始时间早于或者等于数据库中开始日期的前一个交易日，则进行API查询
         if let Some(prev_day) = LOCAL_DATES.prev_day(period.start_dt) {
-            if prev_day >= start_dt {
+            if start_dt <= prev_day {
                 debug!(
                     "{} daily prices between {} and {} will be fetched via remote API",
                     &code, start_dt, prev_day
@@ -91,9 +96,9 @@ pub async fn get_stock_daily_prices(
             }
         }
 
-        // 当且仅当数据库中结束日期的下一个交易日早于或等于给定的结束日期，则进行API查询
+        // 当且仅当查询结束时间晚于或等于数据库中结束日期的下一个交易日，则进行API查询
         if let Some(next_day) = LOCAL_DATES.next_day(period.end_dt) {
-            if next_day <= end_dt {
+            if end_dt >= next_day {
                 debug!(
                     "{} daily prices between {} and {} will be fetched via remote API",
                     &code, next_day, end_dt
@@ -185,13 +190,19 @@ pub async fn get_stock_tick_prices(
     };
     
     let code = Arc::new(code.to_owned());
-    // 起始时间大于结束时间
+    // 起始时间大于结束时间或当天
     if start_ts > end_ts {
         return Err(Error::custom(
             ErrorKind::BadRequest,
             format!("start_ts {} > end_ts {}", start_ts, end_ts),
         ));
+    } else if start_ts >= chrono::Local::today().naive_local().and_hms(0, 0, 0) {
+        return Err(Error::custom(
+            ErrorKind::BadRequest,
+            format!("start_ts {} >= current day not supported", start_ts),
+        ));
     }
+
     let period = {
         let code = Arc::clone(&code);
         let tick = Arc::clone(&tick);
@@ -203,7 +214,7 @@ pub async fn get_stock_tick_prices(
 
         // 当且仅当数据库中开始日期的前一个交易日晚于或等于给定的起始日期，则进行API查询
         if let Some(prev_day) = LOCAL_DATES.prev_day(period.start_dt) {
-            if prev_day.and_hms(0, 0, 0) >= start_ts {
+            if prev_day.and_hms(15, 30, 1) > start_ts {
                 debug!(
                     "{} {} prices between {} and {} will be fetched via remote API",
                     &code, &tick, start_ts.date(), prev_day
@@ -265,11 +276,12 @@ pub async fn get_stock_tick_prices(
         }
     }
     let data = {
+        let tick = Arc::clone(&tick);
         let code = Arc::clone(&code);
         let pool = pool.clone();
         let start_dt = start_ts.date();
         let end_dt = end_ts.date();
-        web::block(move || ticks::query_db_prices(&pool, &code, start_dt, end_dt)).await?
+        web::block(move || ticks::query_db_prices(&pool, &tick, &code, start_dt, end_dt)).await?
     };
     Ok(data)
 }
@@ -340,6 +352,7 @@ fn insert_daily_prices(
         return Ok(());
     }
     let input_code: &str = &prices.first().as_ref().unwrap().code;
+    let input_tick: &str = "1d";
 
     use diesel::prelude::*;
 
@@ -360,7 +373,7 @@ fn insert_daily_prices(
                 UpdatePricePeriod::Upperbound => {
                     let input_end_dt = prices.last().as_ref().unwrap().dt;
                     diesel::update(
-                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq("1d"))),
+                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq(input_tick))),
                     )
                     .set(end_dt.eq(input_end_dt))
                     .execute(&conn)?;
@@ -368,7 +381,7 @@ fn insert_daily_prices(
                 UpdatePricePeriod::Lowerbound => {
                     let input_start_dt = prices.first().as_ref().unwrap().dt;
                     diesel::update(
-                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq("1d"))),
+                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq(input_tick))),
                     )
                     .set(start_dt.eq(input_start_dt))
                     .execute(&conn)?;
@@ -379,7 +392,7 @@ fn insert_daily_prices(
                     diesel::insert_into(stock_price_ticks)
                         .values(StockPriceTick {
                             code: input_code.to_owned(),
-                            tick: "1d".to_owned(),
+                            tick: input_tick.to_owned(),
                             start_dt: input_start_dt,
                             end_dt: input_end_dt,
                         })
@@ -413,7 +426,7 @@ fn insert_tick_prices(
             diesel::insert_into(stock_tick_prices)
                 .values(prices)
                 .execute(&conn)?;
-            debug!("{} rows of stock tick prices inserted", prices.len());
+            debug!("{} rows of stock tick[{}] prices inserted", prices.len(), input_tick);
         }
         // 更新价格区间
         {
@@ -422,7 +435,7 @@ fn insert_tick_prices(
                 UpdatePricePeriod::Upperbound => {
                     let input_end_dt = prices.last().as_ref().unwrap().ts.date();
                     diesel::update(
-                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq("1d"))),
+                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq(input_tick))),
                     )
                     .set(end_dt.eq(input_end_dt))
                     .execute(&conn)?;
@@ -430,7 +443,7 @@ fn insert_tick_prices(
                 UpdatePricePeriod::Lowerbound => {
                     let input_start_dt = prices.first().as_ref().unwrap().ts.date();
                     diesel::update(
-                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq("1d"))),
+                        stock_price_ticks.filter(code.eq(input_code).and(tick.eq(input_tick))),
                     )
                     .set(start_dt.eq(input_start_dt))
                     .execute(&conn)?;

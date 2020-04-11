@@ -153,7 +153,6 @@ pub struct Trend {
     pub level: u8,
 }
 
-
 /// 单标的确定周期的数据来源
 pub trait Source {
     // 给定代码和时刻，获取该时刻前的不多于limit条数的K线数据
@@ -161,32 +160,4 @@ pub trait Source {
 
     // 给定代码和时刻，获取该时刻后的不多余limit条数的K线数据
     fn data_after(&self, ts: &str, limit: u32) -> Vec<K>;
-}
-
-/// 分型序列
-///
-/// 包含潜在分型的序列，以及未能形成分型的尾部K线
-/// 可通过输入最新K线，更新或延长已有序列
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PartingSeq {
-    pub body: Vec<Parting>,
-    pub tail: Vec<CK>,
-}
-
-/// 笔序列
-///
-/// 包含笔序列，以及未形成笔的尾部分型
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StrokeSeq {
-    pub body: Vec<Stroke>,
-    // 笔尾
-    // 包含未能成笔的顶底分型及合成K线
-    pub tail: Option<PartingSeq>,
-}
-
-/// 线段序列
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SegmentSeq {
-    pub body: Vec<Segment>,
-    pub tail: Option<StrokeSeq>,
 }

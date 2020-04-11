@@ -1,0 +1,17 @@
+*, *:before, *:after {
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+div.tooltip {
+    position: absolute;
+    text-align: center;
+    width: 180px;
+    height: 120px;
+    padding: 2px;
+    font-size: 12px;
+    border: 1px;
+    border-color: black;
+    pointer-events: none;
+    background-color: white;
+}

@@ -6,17 +6,11 @@
         <base href="/"/>
         <!-- <link rel="stylesheet" href="./css/bootstrap-4.4.1.min.css"/> -->
         <link rel="stylesheet" href="jquery-ui.min.css"/>
-        <script type="css">
-            *, *:before, *:after {
-                -webkit-box-sizing: border-box;
-                -moz-box-sizing: border-box;
-                box-sizing: border-box;
-            }
-        </script>
+        <link rel="stylesheet" href="main.css"/>
         <title>Tanglism Web</title>
     </head>
     <body>
-        <div id="search_bar">
+        <div id="search_bar" style="margin-bottom: 20px">
             <label>股票代码：</label><input type="text" id="input_stock_code"/>
             <label>起始日期：</label><input type="text" id="input_start_dt"/>
             <label>结束日期：</label><input type="text" id="input_end_dt"/>
@@ -26,9 +20,47 @@
                 <option>5m</option>
                 <option selected>30m</option>
             </select>
+            <input type="checkbox" id="k_check" value="k" checked/>
+            <label for="k_check">K线</label>
+            <input type="checkbox" id="parting_check" value="parting"/>
+            <label for="parting_check">分型</label>
+            <input type="checkbox" id="stroke_check" value="stroke"/>
+            <label for="stroke_check">笔</label>
+            <input type="checkbox" id="segment_check" value="segment"/>
+            <label for="segment_check">线段</label>
             <input type="submit" id="stock_submission" value="提交"/>
+            <label>柱宽：</label>
+            <select id="bar_width">
+                <option>1</option>
+                <option>2</option>
+                <option>3</option>
+                <option>4</option>
+                <option>5</option>
+                <option>7</option>
+                <option>10</option>
+                <option selected>15</option>
+                <option>20</option>
+                <option>30</option>
+                <option>50</option>
+            </select>
+            <label>总高：</label>
+            <select id="chart_height">
+                <option>200</option>
+                <option>300</option>
+                <option selected>400</option>
+                <option>500</option>
+                <option>800</option>
+                <option>1000</option>
+                <option>1200</option>
+                <option>1500</option>
+                <option>2000</option>
+            </select>
+            <input type="button" id="chart_refresh" value="刷新"/>
         </div>
-
+        <div id="k_container" style="margin-bottom: 20px"></div>
+        <div id="parting_container" style="margin-bottom: 20px"></div>
+        <div id="stroke_container" style="margin-bottom: 20px"></div>
+        <div id="segment_container" style="margin-bottom: 20px"></div>
         <script src="./js/jquery-3.4.1.min.js"></script>
         <!-- <script src="./js/popper-1.16.0.min.js"></script> -->
         <!-- <script src="./js/bootstrap-4.4.1.min.js"></script> -->

@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::shape::{Parting, PartingSeq, Stroke, StrokeSeq};
+use crate::shape::{Parting, Stroke};
 use tanglism_utils::TradingTimestamps;
 
 /// 将分型序列解析为笔序列
@@ -9,7 +9,7 @@ use tanglism_utils::TradingTimestamps;
 /// 2. 选择下一个点。
 ///    若异型：邻接或交叉则忽略，不邻接则成笔
 ///    若同型：顶更高/底更低则修改当前笔，反之则忽略
-pub fn pts_to_sks<T>(pts: &PartingSeq, tts: &T) -> Result<StrokeSeq>
+pub fn pts_to_sks<T>(pts: &[Parting], tts: &T) -> Result<Vec<Stroke>>
 where
     T: TradingTimestamps,
 {
@@ -17,7 +17,7 @@ where
 }
 
 struct StrokeShaper<'p, 't, T> {
-    pts: &'p PartingSeq,
+    pts: &'p [Parting],
     tts: &'t T,
     sks: Vec<Stroke>,
     tail: Vec<Parting>,
@@ -25,7 +25,7 @@ struct StrokeShaper<'p, 't, T> {
 }
 
 impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
-    fn new(pts: &'p PartingSeq, tts: &'t T) -> Self {
+    fn new(pts: &'p [Parting], tts: &'t T) -> Self {
         StrokeShaper {
             pts,
             tts,
@@ -35,27 +35,18 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         }
     }
 
-    fn run(mut self) -> Result<StrokeSeq> {
-        if self.pts.body.is_empty() {
-            return Ok(StrokeSeq {
-                body: Vec::new(),
-                tail: Some(self.pts.clone()),
-            });
+    fn run(mut self) -> Result<Vec<Stroke>> {
+        if self.pts.is_empty() {
+            return Ok(Vec::new());
         }
-        let mut pts_iter = self.pts.body.iter();
+        let mut pts_iter = self.pts.iter();
         let first = pts_iter.next().cloned().unwrap();
         self.start = Some(first.clone());
         self.tail.push(first);
         while let Some(pt) = pts_iter.next() {
             self.consume(pt.clone());
         }
-        Ok(StrokeSeq {
-            body: self.sks,
-            tail: Some(PartingSeq {
-                body: self.tail,
-                tail: self.pts.tail.clone(),
-            }),
-        })
+        Ok(self.sks)
     }
 
 
@@ -142,8 +133,7 @@ mod tests {
             new_pt1("2020-02-01 10:03", 9.50, false),
             new_pt1("2020-02-01 10:06", 9.80, true),
         ]);
-        assert!(sks.body.is_empty());
-        assert_eq!(4, sks.tail.unwrap().body.len());
+        assert!(sks.is_empty());
         Ok(())
     }
 
@@ -154,8 +144,7 @@ mod tests {
             new_pt1("2020-02-01 10:10", 10.40, true),
             new_pt1("2020-02-01 10:13", 10.30, false),
         ]);
-        assert_eq!(1, sks.body.len());
-        assert_eq!(1, sks.tail.unwrap().body.len());
+        assert_eq!(1, sks.len());
         Ok(())
     }
 
@@ -167,9 +156,9 @@ mod tests {
             new_pt1("2020-02-01 10:04", 9.90, false),
             new_pt1("2020-02-01 10:10", 10.30, true),
         ]);
-        assert_eq!(1, sks.body.len());
-        assert_eq!(new_ts("2020-02-01 10:04"), sks.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-01 10:10"), sks.body[0].end_pt.extremum_ts);
+        assert_eq!(1, sks.len());
+        assert_eq!(new_ts("2020-02-01 10:04"), sks[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-01 10:10"), sks[0].end_pt.extremum_ts);
         Ok(())
     }
 
@@ -181,9 +170,9 @@ mod tests {
             new_pt1("2020-02-01 10:04", 10.02, false),
             new_pt1("2020-02-01 10:10", 10.30, true),
         ]);
-        assert_eq!(1, sks.body.len());
-        assert_eq!(new_ts("2020-02-01 10:00"), sks.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-01 10:10"), sks.body[0].end_pt.extremum_ts);
+        assert_eq!(1, sks.len());
+        assert_eq!(new_ts("2020-02-01 10:00"), sks[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-01 10:10"), sks[0].end_pt.extremum_ts);
         Ok(())
     }
 
@@ -194,19 +183,12 @@ mod tests {
             new_pt1("2020-02-01 10:10", 10.10, true),
             new_pt1("2020-02-01 10:20", 10.02, false),
         ]);
-        assert_eq!(2, sks.body.len());
+        assert_eq!(2, sks.len());
         Ok(())
     }
 
-    fn pts_to_sks_1_min(pts: Vec<Parting>) -> StrokeSeq {
-        pts_to_sks(&new_pts(pts), &*LOCAL_TS_1_MIN).unwrap()
-    }
-
-    fn new_pts(pts: Vec<Parting>) -> PartingSeq {
-        PartingSeq {
-            body: pts,
-            tail: vec![],
-        }
+    fn pts_to_sks_1_min(pts: Vec<Parting>) -> Vec<Stroke> {
+        pts_to_sks(&pts, &*LOCAL_TS_1_MIN).unwrap()
     }
 
     fn new_pt1(ts: &str, price: f64, top: bool) -> Parting {

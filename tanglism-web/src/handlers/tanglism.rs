@@ -2,7 +2,7 @@ use crate::{DbPool, Result, Error, ErrorKind};
 use serde_derive::*;
 use actix_web::{get, web};
 use actix_web::web::Json;
-use tanglism_morph::{PartingSeq, StrokeSeq, SegmentSeq};
+use tanglism_morph::{Parting, Stroke, Segment};
 use chrono::NaiveDateTime;
 use jqdata::JqdataClient;
 use tanglism_morph::{K, ks_to_pts, pts_to_sks, sks_to_sgs};
@@ -26,7 +26,7 @@ pub async fn api_get_tanglism_partings(
     jq: web::Data<JqdataClient>,
     path: web::Path<ticks::Path>,
     param: web::Query<ticks::Param>,
-) -> Result<Json<Response<PartingSeq>>> {
+) -> Result<Json<Response<Vec<Parting>>>> {
     get_tanglism_entities(&pool, &jq, &path, &param, |prices| {
         let ks: Vec<K> = prices.into_iter().map(|p| K{
             ts: p.ts,
@@ -43,7 +43,7 @@ pub async fn api_get_tanglism_strokes(
     jq: web::Data<JqdataClient>,
     path: web::Path<ticks::Path>,
     param: web::Query<ticks::Param>,
-) -> Result<Json<Response<StrokeSeq>>> {
+) -> Result<Json<Response<Vec<Stroke>>>> {
     get_tanglism_entities(&pool, &jq, &path, &param, |prices| {
         let ks: Vec<K> = prices.into_iter().map(|p| K{
             ts: p.ts,
@@ -66,7 +66,7 @@ pub async fn api_get_tanglism_segments(
     jq: web::Data<JqdataClient>,
     path: web::Path<ticks::Path>,
     param: web::Query<ticks::Param>,
-) -> Result<Json<Response<SegmentSeq>>> {
+) -> Result<Json<Response<Vec<Segment>>>> {
     get_tanglism_entities(&pool, &jq, &path, &param, |prices| {
         let ks: Vec<K> = prices.into_iter().map(|p| K{
             ts: p.ts,
