@@ -53,6 +53,7 @@ const STOCK_PRICE_COLUMNS: StockPriceColumns = (
 
 pub fn query_db_prices(
     pool: &DbPool,
+    input_tick: &str,
     input_code: &str,
     input_start_dt: NaiveDate,
     input_end_dt: NaiveDate,
@@ -63,7 +64,8 @@ pub fn query_db_prices(
     let input_end_ts = input_end_dt.and_hms(23, 59, 59);
     let data = stock_tick_prices
         .filter(
-            code.eq(input_code)
+            tick.eq(input_tick)
+                .and(code.eq(input_code))
                 .and(ts.ge(input_start_ts))
                 .and(ts.le(input_end_ts)),
         )

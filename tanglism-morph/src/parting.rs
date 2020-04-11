@@ -1,8 +1,8 @@
 use crate::Result;
-use crate::shape::{K, CK, Parting, PartingSeq};
+use crate::shape::{K, CK, Parting};
 
 /// 将K线图解析为分型序列
-pub fn ks_to_pts(ks: &[K]) -> Result<PartingSeq> {
+pub fn ks_to_pts(ks: &[K]) -> Result<Vec<Parting>> {
     PartingShaper::new(ks).run()
 }
 
@@ -117,7 +117,7 @@ impl<'k> PartingShaper<'k> {
         self.third_k = None;
     }
 
-    fn run(mut self) -> Result<PartingSeq> {
+    fn run(mut self) -> Result<Vec<Parting>> {
         for k in self.ks.iter() {
             self.consume(k.clone());
         }
@@ -141,19 +141,7 @@ impl<'k> PartingShaper<'k> {
             self.first_k = Some(k2);
             self.second_k = Some(k3);
         }
-
-        let mut tail = vec![];
-        // 将剩余k线加入尾部，必定不会出现三根K线
-        if let Some(fk) = self.first_k {
-            tail.push(fk);
-        }
-        if let Some(sk) = self.second_k {
-            tail.push(sk);
-        }
-        Ok(PartingSeq {
-            body: self.body,
-            tail,
-        })
+        Ok(self.body)
     }
 
     /// 辅助函数，将单个K线转化为合并K线
@@ -223,10 +211,7 @@ mod tests {
         ];
         // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         let r = ks_to_pts(&ks)?;
-        assert_eq!(0, r.body.len());
-        assert_eq!(2, r.tail.len());
-        assert_eq!(new_ts("2020-02-01 10:03"), r.tail[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:04"), r.tail[1].start_ts);
+        assert_eq!(0, r.len());
         Ok(())
     }
 
@@ -240,13 +225,12 @@ mod tests {
             new_k("2020-02-01 10:04", 10.10, 10.00),
         ];
         let r = ks_to_pts(&ks)?;
-        assert_eq!(1, r.body.len());
-        assert_eq!(2, r.tail.len());
-        assert_eq!(new_ts("2020-02-01 10:01"), r.body[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:03"), r.body[0].end_ts);
-        assert_eq!(new_ts("2020-02-01 10:02"), r.body[0].extremum_ts);
-        assert_eq!(BigDecimal::from(10.20), r.body[0].extremum_price);
-        assert_eq!(true, r.body[0].top);
+        assert_eq!(1, r.len());
+        assert_eq!(new_ts("2020-02-01 10:01"), r[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03"), r[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:02"), r[0].extremum_ts);
+        assert_eq!(BigDecimal::from(10.20), r[0].extremum_price);
+        assert_eq!(true, r[0].top);
         Ok(())
     }
 
@@ -262,9 +246,8 @@ mod tests {
         let r = ks_to_pts(&ks)?;
         // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         // panic!(json);
-        assert_eq!(1, r.body.len());
-        assert_eq!(2, r.tail.len());
-        assert_eq!(new_ts("2020-02-01 10:04"), r.body[0].end_ts);
+        assert_eq!(1, r.len());
+        assert_eq!(new_ts("2020-02-01 10:04"), r[0].end_ts);
         Ok(())
     }
 
@@ -278,14 +261,13 @@ mod tests {
             new_k("2020-02-01 10:04", 10.20, 10.10),
         ];
         let r = ks_to_pts(&ks)?;
-        assert_eq!(2, r.body.len());
-        assert_eq!(new_ts("2020-02-01 10:01"), r.body[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:03"), r.body[0].end_ts);
-        assert_eq!(true, r.body[0].top);
-        assert_eq!(new_ts("2020-02-01 10:02"), r.body[1].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:04"), r.body[1].end_ts);
-        assert_eq!(false, r.body[1].top);
-        assert_eq!(2, r.tail.len());
+        assert_eq!(2, r.len());
+        assert_eq!(new_ts("2020-02-01 10:01"), r[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03"), r[0].end_ts);
+        assert_eq!(true, r[0].top);
+        assert_eq!(new_ts("2020-02-01 10:02"), r[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:04"), r[1].end_ts);
+        assert_eq!(false, r[1].top);
         Ok(())
     }
 
@@ -302,11 +284,11 @@ mod tests {
             new_k("2020-02-01 10:07", 10.05, 9.95),
         ];
         let r = ks_to_pts(&ks)?;
-        assert_eq!(2, r.body.len());
-        assert_eq!(new_ts("2020-02-01 10:01"), r.body[0].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:03"), r.body[0].end_ts);
-        assert_eq!(new_ts("2020-02-01 10:05"), r.body[1].start_ts);
-        assert_eq!(new_ts("2020-02-01 10:07"), r.body[1].end_ts);
+        assert_eq!(2, r.len());
+        assert_eq!(new_ts("2020-02-01 10:01"), r[0].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:03"), r[0].end_ts);
+        assert_eq!(new_ts("2020-02-01 10:05"), r[1].start_ts);
+        assert_eq!(new_ts("2020-02-01 10:07"), r[1].end_ts);
         Ok(())
     }
 

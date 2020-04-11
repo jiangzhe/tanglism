@@ -1,34 +1,31 @@
 use crate::Result;
-use crate::shape::{Stroke, CStroke, StrokeSeq, Segment, SegmentSeq, Parting};
+use crate::shape::{Stroke, CStroke, Segment, Parting};
 use chrono::NaiveDateTime;
 use bigdecimal::BigDecimal;
 
 /// 将笔序列解析为线段序列
-pub fn sks_to_sgs(sks: &StrokeSeq) -> Result<SegmentSeq> {
+pub fn sks_to_sgs(sks: &[Stroke]) -> Result<Vec<Segment>> {
     SegmentShaper::new(sks).run()
 }
 
 pub struct SegmentShaper<'s> {
-    sks: &'s StrokeSeq,
+    sks: &'s [Stroke],
 }
 
 impl<'s> SegmentShaper<'s> {
-    fn new(sks: &'s StrokeSeq) -> Self {
+    fn new(sks: &'s [Stroke]) -> Self {
         SegmentShaper{
             sks,
         }
     }
 
-    fn run(self) -> Result<SegmentSeq> {
-        if self.sks.body.is_empty() {
-            return Ok(SegmentSeq{
-                body: Vec::new(),
-                tail: Some(self.sks.clone()),
-            });
+    fn run(self) -> Result<Vec<Segment>> {
+        if self.sks.is_empty() {
+            return Ok(Vec::new());
         }
 
         let mut body = Vec::new();
-        let input = &self.sks.body;
+        let input = &self.sks;
         let len = input.len();
         let mut ps = PendingSegment::new(input[0].clone());
         let mut index = 1;
@@ -73,25 +70,13 @@ impl<'s> SegmentShaper<'s> {
         } else {
             rest_sks.extend(input.iter().cloned());
         }
-        
-        let tail = if rest_sks.is_empty() && self.sks.tail.is_none() {
-            None
-        } else {
-            Some(StrokeSeq{
-                body: rest_sks,
-                tail: self.sks.tail.clone(),
-            })
-        };
 
-        Ok(SegmentSeq{
-            body,
-            tail,
-        })
+        Ok(body)
     }
 
     fn rfind_sk_index(&self, mut index: i32, start_ts: NaiveDateTime) -> Option<i32> {
         while index >= 0 {
-            let curr_ts = self.sks.body[index as usize].start_pt.extremum_ts;
+            let curr_ts = self.sks[index as usize].start_pt.extremum_ts;
             if curr_ts == start_ts {
                 return Some(index);
             } else if curr_ts < start_ts {
@@ -487,17 +472,17 @@ mod tests {
     // 未确定线段
     #[test]
     fn test_segment_undetermined() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:20", 10.50),
             new_sk("2020-02-02 10:20", 10.50, "2020-02-02 10:40", 10.30),
             new_sk("2020-02-02 10:40", 10.30, "2020-02-02 11:00", 11.00),
-        ]);
+        ];
 
         let sgs = sks_to_sgs(&sks)?;
 
-        assert!(!sgs.body.is_empty());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:00"), sgs.body[0].end_pt.extremum_ts);
+        assert!(!sgs.is_empty());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:00"), sgs[0].end_pt.extremum_ts);
         
         Ok(())
     }
@@ -505,58 +490,55 @@ mod tests {
     // 线段被笔破坏
     #[test]
     fn test_segment_broken_by_stroke() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:20", 10.50),
             new_sk("2020-02-02 10:20", 10.50, "2020-02-02 10:40", 10.30),
             new_sk("2020-02-02 10:40", 10.30, "2020-02-02 11:00", 11.00),
             new_sk("2020-02-02 11:00", 11.00, "2020-02-02 11:20", 9.00),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
         
-        assert!(!sgs.body.is_empty());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:00"), sgs.body[0].end_pt.extremum_ts);
-        assert!(sgs.tail.is_some());
-        assert!(!sgs.tail.as_ref().unwrap().body.is_empty());
-        assert_eq!(new_ts("2020-02-02 11:00"), sgs.tail.as_ref().unwrap().body[0].start_pt.extremum_ts);
+        assert!(!sgs.is_empty());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:00"), sgs[0].end_pt.extremum_ts);
         Ok(())
     }
 
     // 未形成线段被笔破坏，起点前移
     #[test]
     fn test_segment_incomplete_broken_by_stroke() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.80),
             new_sk("2020-02-02 10:10", 10.80, "2020-02-02 10:20", 10.50),
             new_sk("2020-02-02 10:20", 10.50, "2020-02-02 10:30", 10.70),
             new_sk("2020-02-02 10:30", 10.70, "2020-02-02 10:40", 9.50),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
 
-        assert!(!sgs.body.is_empty());
-        assert_eq!(new_ts("2020-02-02 10:10"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:40"), sgs.body[0].end_pt.extremum_ts);
+        assert!(!sgs.is_empty());
+        assert_eq!(new_ts("2020-02-02 10:10"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:40"), sgs[0].end_pt.extremum_ts);
         Ok(())
     }
 
     // 线段被线段破坏
     #[test]
     fn test_segment_broken_by_segment() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.80),
             new_sk("2020-02-02 10:10", 10.80, "2020-02-02 10:20", 10.50),
             new_sk("2020-02-02 10:20", 10.50, "2020-02-02 10:30", 11.20),
             new_sk("2020-02-02 10:30", 11.20, "2020-02-02 10:40", 10.30),
             new_sk("2020-02-02 10:40", 10.30, "2020-02-02 10:50", 10.60),
             new_sk("2020-02-02 10:50", 10.60, "2020-02-02 11:00", 9.50),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
         
-        assert_eq!(2, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[1].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:00"), sgs.body[1].end_pt.extremum_ts);
+        assert_eq!(2, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[1].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:00"), sgs[1].end_pt.extremum_ts);
         
         Ok(())
     }
@@ -564,7 +546,7 @@ mod tests {
     // 跳空缺口未形成底分型
     #[test]
     fn test_segment_gap_without_parting() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.80),
             new_sk("2020-02-02 10:10", 10.80, "2020-02-02 10:20", 10.50),
             new_sk("2020-02-02 10:20", 10.50, "2020-02-02 10:30", 11.20),
@@ -572,19 +554,19 @@ mod tests {
             new_sk("2020-02-02 10:40", 11.00, "2020-02-02 10:50", 11.10),
             new_sk("2020-02-02 10:50", 11.10, "2020-02-02 11:00", 10.40),
             new_sk("2020-02-02 11:00", 10.40, "2020-02-02 11:10", 11.50),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
         
-        assert_eq!(1, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:10"), sgs.body[0].end_pt.extremum_ts);
+        assert_eq!(1, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:10"), sgs[0].end_pt.extremum_ts);
         Ok(())
     }
 
     // 跳空缺口未形成底分型且包含
     #[test]
     fn test_segment_gap_without_parting_but_inclusive() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.50),
             new_sk("2020-02-02 10:10", 10.50, "2020-02-02 10:20", 10.30),
             new_sk("2020-02-02 10:20", 10.30, "2020-02-02 10:30", 11.20),
@@ -592,19 +574,19 @@ mod tests {
             new_sk("2020-02-02 10:40", 10.70, "2020-02-02 10:50", 11.10),
             new_sk("2020-02-02 10:50", 11.10, "2020-02-02 11:00", 10.80),
             new_sk("2020-02-02 11:00", 10.80, "2020-02-02 11:10", 11.50),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
         
-        assert_eq!(1, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:10"), sgs.body[0].end_pt.extremum_ts);
+        assert_eq!(1, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:10"), sgs[0].end_pt.extremum_ts);
         Ok(())
     }
 
     // 跳空缺口未形成底分型且未突破
     #[test]
     fn test_segment_gap_without_parting_and_exceeding() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.50),
             new_sk("2020-02-02 10:10", 10.50, "2020-02-02 10:20", 10.30),
             new_sk("2020-02-02 10:20", 10.30, "2020-02-02 10:30", 11.20),
@@ -612,19 +594,19 @@ mod tests {
             new_sk("2020-02-02 10:40", 10.70, "2020-02-02 10:50", 11.10),
             new_sk("2020-02-02 10:50", 11.10, "2020-02-02 11:00", 10.80),
             new_sk("2020-02-02 11:00", 10.80, "2020-02-02 11:10", 10.90),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
         
-        assert_eq!(1, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[0].end_pt.extremum_ts);
+        assert_eq!(1, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
         Ok(())
     }
 
     // 跳空缺口形成底分型
     #[test]
     fn test_segment_gap_with_parting() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.50),
             new_sk("2020-02-02 10:10", 10.50, "2020-02-02 10:20", 10.30),
             new_sk("2020-02-02 10:20", 10.30, "2020-02-02 10:30", 11.20),
@@ -634,23 +616,23 @@ mod tests {
             new_sk("2020-02-02 11:00", 10.20, "2020-02-02 11:10", 10.90),
             new_sk("2020-02-02 11:10", 10.90, "2020-02-02 11:20", 10.80),
             new_sk("2020-02-02 11:20", 10.80, "2020-02-02 11:30", 11.40),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
 
-        assert_eq!(3, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[1].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:00"), sgs.body[1].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:00"), sgs.body[2].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:30"), sgs.body[2].end_pt.extremum_ts);
+        assert_eq!(3, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[1].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:00"), sgs[1].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:00"), sgs[2].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:30"), sgs[2].end_pt.extremum_ts);
         Ok(())
     }
 
     // 跳空缺口形成底分型且包含
     #[test]
     fn test_segment_gap_with_parting_and_inclusive() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.50),
             new_sk("2020-02-02 10:10", 10.50, "2020-02-02 10:20", 10.30),
             new_sk("2020-02-02 10:20", 10.30, "2020-02-02 10:30", 11.20),
@@ -662,63 +644,63 @@ mod tests {
             new_sk("2020-02-02 11:20", 10.40, "2020-02-02 11:30", 10.80),
             new_sk("2020-02-02 11:30", 10.80, "2020-02-02 13:10", 10.60),
             new_sk("2020-02-02 13:10", 10.60, "2020-02-02 13:20", 11.15),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
 
-        assert_eq!(3, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[1].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:20"), sgs.body[1].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:20"), sgs.body[2].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 13:20"), sgs.body[2].end_pt.extremum_ts);
+        assert_eq!(3, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[1].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:20"), sgs[1].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:20"), sgs[2].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 13:20"), sgs[2].end_pt.extremum_ts);
         Ok(())
     }
     
     // 跳空缺口被笔破坏
     #[test]
     fn test_segment_gap_broken_by_stroke() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.50),
             new_sk("2020-02-02 10:10", 10.50, "2020-02-02 10:20", 10.30),
             new_sk("2020-02-02 10:20", 10.30, "2020-02-02 10:30", 11.20),
             new_sk("2020-02-02 10:30", 11.20, "2020-02-02 10:40", 10.90),
             new_sk("2020-02-02 10:40", 10.90, "2020-02-02 10:50", 11.10),
             new_sk("2020-02-02 10:50", 11.10, "2020-02-02 11:00", 9.80),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
         
-        assert_eq!(2, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:30"), sgs.body[1].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:00"), sgs.body[1].end_pt.extremum_ts);
+        assert_eq!(2, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:30"), sgs[1].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:00"), sgs[1].end_pt.extremum_ts);
         Ok(())
     }
 
     // 跳空缺口继续突破
     #[test]
     fn test_segment_gap_with_exceeding() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.50),
             new_sk("2020-02-02 10:10", 10.50, "2020-02-02 10:20", 10.30),
             new_sk("2020-02-02 10:20", 10.30, "2020-02-02 10:30", 11.20),
             new_sk("2020-02-02 10:30", 11.20, "2020-02-02 10:40", 10.90),
             new_sk("2020-02-02 10:40", 10.90, "2020-02-02 10:50", 11.50),
             new_sk("2020-02-02 10:50", 11.50, "2020-02-02 11:00", 11.30),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
         
-        assert_eq!(1, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:50"), sgs.body[0].end_pt.extremum_ts);
+        assert_eq!(1, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:50"), sgs[0].end_pt.extremum_ts);
         Ok(())
     }
 
     // 特征序列包含顶分型左
     #[test]
     fn test_segment_inclusive_parting_left() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 11.00),
             new_sk("2020-02-02 10:10", 11.00, "2020-02-02 10:20", 10.20),
             new_sk("2020-02-02 10:20", 10.20, "2020-02-02 10:30", 10.80),
@@ -727,21 +709,21 @@ mod tests {
             new_sk("2020-02-02 10:50", 11.30, "2020-02-02 11:00", 10.40),
             new_sk("2020-02-02 11:00", 10.40, "2020-02-02 11:10", 10.70),
             new_sk("2020-02-02 11:10", 10.70, "2020-02-02 11:20", 10.10),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
 
-        assert_eq!(2, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:50"), sgs.body[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:50"), sgs.body[1].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 11:20"), sgs.body[1].end_pt.extremum_ts);
+        assert_eq!(2, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:50"), sgs[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:50"), sgs[1].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 11:20"), sgs[1].end_pt.extremum_ts);
         Ok(())
     }
 
     // 特征序列包含顶分型右
     #[test]
     fn test_segment_inclusive_parting_right() -> Result<()> {
-        let sks = new_sks(vec![
+        let sks = vec![
             new_sk("2020-02-02 10:00", 10.00, "2020-02-02 10:10", 10.50),
             new_sk("2020-02-02 10:10", 10.50, "2020-02-02 10:20", 10.30),
             new_sk("2020-02-02 10:20", 10.30, "2020-02-02 10:30", 10.80),
@@ -752,22 +734,15 @@ mod tests {
             new_sk("2020-02-02 11:10", 11.00, "2020-02-02 11:20", 10.70),
             new_sk("2020-02-02 11:20", 10.70, "2020-02-02 11:30", 11.00),
             new_sk("2020-02-02 11:30", 11.00, "2020-02-02 13:10", 10.10),
-        ]);
+        ];
         let sgs = sks_to_sgs(&sks)?;
 
-        assert_eq!(2, sgs.body.len());
-        assert_eq!(new_ts("2020-02-02 10:00"), sgs.body[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:50"), sgs.body[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 10:50"), sgs.body[1].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-02 13:10"), sgs.body[1].end_pt.extremum_ts);
+        assert_eq!(2, sgs.len());
+        assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:50"), sgs[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 10:50"), sgs[1].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-02 13:10"), sgs[1].end_pt.extremum_ts);
         Ok(())
-    }
-
-    fn new_sks(body: Vec<Stroke>) -> StrokeSeq {
-        StrokeSeq{
-            body,
-            tail: None,
-        }
     }
 
     fn new_sk(start_ts: &str, start_price: f64, end_ts: &str, end_price: f64) -> Stroke {
