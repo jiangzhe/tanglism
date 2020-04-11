@@ -3,16 +3,36 @@
     <head>
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>        
-        <link rel="stylesheet" href="./css/bootstrap-4.4.1.min.css"/>
-        
+        <base href="/"/>
+        <!-- <link rel="stylesheet" href="./css/bootstrap-4.4.1.min.css"/> -->
+        <link rel="stylesheet" href="jquery-ui.min.css"/>
+        <script type="css">
+            *, *:before, *:after {
+                -webkit-box-sizing: border-box;
+                -moz-box-sizing: border-box;
+                box-sizing: border-box;
+            }
+        </script>
         <title>Tanglism Web</title>
     </head>
     <body>
-        
+        <div id="search_bar">
+            <label>股票代码：</label><input type="text" id="input_stock_code"/>
+            <label>起始日期：</label><input type="text" id="input_start_dt"/>
+            <label>结束日期：</label><input type="text" id="input_end_dt"/>
+            <label>周期：</label>
+            <select id="input_tick">
+                <option>1m</option>
+                <option>5m</option>
+                <option selected>30m</option>
+            </select>
+            <input type="submit" id="stock_submission" value="提交"/>
+        </div>
 
         <script src="./js/jquery-3.4.1.min.js"></script>
-        <script src="./js/popper-1.16.0.min.js"></script>
-        <script src="./js/bootstrap-4.4.1.min.js"></script>
+        <!-- <script src="./js/popper-1.16.0.min.js"></script> -->
+        <!-- <script src="./js/bootstrap-4.4.1.min.js"></script> -->
+        <script src="./js/jquery-ui-1.2.1.min.js"></script>
         <script src="./js/d3.v5.min.js"></script>
         <script src="./js/tanglism.js"></script>
     </body>
