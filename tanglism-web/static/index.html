@@ -20,14 +20,14 @@
                 <option>5m</option>
                 <option selected>30m</option>
             </select>
-            <input type="checkbox" id="k_check" value="k" checked/>
-            <label for="k_check">K线</label>
-            <input type="checkbox" id="parting_check" value="parting"/>
-            <label for="parting_check">分型</label>
-            <input type="checkbox" id="stroke_check" value="stroke"/>
-            <label for="stroke_check">笔</label>
-            <input type="checkbox" id="segment_check" value="segment"/>
-            <label for="segment_check">线段</label>
+            <!-- <input type="checkbox" id="k_check" value="k" checked/>
+            <label for="k_check">K线</label> -->
+            <input type="checkbox" id="p_check" value="parting"/>
+            <label for="p_check">分型</label>
+            <input type="checkbox" id="sk_check" value="stroke"/>
+            <label for="sk_check">笔</label>
+            <input type="checkbox" id="sg_check" value="segment"/>
+            <label for="sg_check">线段</label>
             <input type="submit" id="stock_submission" value="提交"/>
             <label>柱宽：</label>
             <select id="bar_width">
@@ -58,9 +58,9 @@
             <input type="button" id="chart_refresh" value="刷新"/>
         </div>
         <div id="k_container" style="margin-bottom: 20px"></div>
-        <div id="parting_container" style="margin-bottom: 20px"></div>
-        <div id="stroke_container" style="margin-bottom: 20px"></div>
-        <div id="segment_container" style="margin-bottom: 20px"></div>
+        <div id="p_container" style="margin-bottom: 20px"></div>
+        <div id="sk_container" style="margin-bottom: 20px"></div>
+        <div id="sg_container" style="margin-bottom: 20px"></div>
         <script src="./js/jquery-3.4.1.min.js"></script>
         <!-- <script src="./js/popper-1.16.0.min.js"></script> -->
         <!-- <script src="./js/bootstrap-4.4.1.min.js"></script> -->
