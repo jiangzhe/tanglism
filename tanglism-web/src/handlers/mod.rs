@@ -1,8 +1,8 @@
 pub mod health;
-pub mod stock_price_ticks;
 pub mod stock_prices;
 pub mod stocks;
 pub mod trade_days;
+pub mod tanglism;
 
 use diesel::pg::Pg;
 use diesel::prelude::*;
@@ -50,7 +50,6 @@ impl<T> Paginated<T> {
     where
         Self: LoadQuery<PgConnection, (U, i64)>,
     {
-        let page_size = self.page_size;
         let results = self.load::<(U, i64)>(conn)?;
         let total = results.get(0).map(|x| x.1).unwrap_or(0);
         let records = results.into_iter().map(|x| x.0).collect();

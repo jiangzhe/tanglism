@@ -5,7 +5,9 @@ mod segment;
 mod parting;
 mod stroke;
 
-use chrono::NaiveDateTime;
 pub use error::Error;
-use serde_derive::*;
 pub type Result<T> = std::result::Result<T, Error>;
+pub use shape::*;
+pub use parting::ks_to_pts;
+pub use stroke::pts_to_sks;
+pub use segment::sks_to_sgs;

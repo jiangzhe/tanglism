@@ -1,4 +1,4 @@
-use crate::trading_date::{TradingDateBitmap, TradingDates, LOCAL_TRADING_DATE_BITMAP};
+use crate::trading_date::{TradingDateBitmap, TradingDates, LOCAL_DATES};
 use crate::{Error, Result};
 use chrono::prelude::*;
 use std::sync::Arc;
@@ -50,12 +50,12 @@ pub struct LocalTradingTimestamps {
 }
 
 lazy_static! {
-    pub static ref LOCAL_TRADING_TS_1_MIN: LocalTradingTimestamps =
-        LocalTradingTimestamps::new("1m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
-    pub static ref LOCAL_TRADING_TS_5_MIN: LocalTradingTimestamps =
-        LocalTradingTimestamps::new("5m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
-    pub static ref LOCAL_TRADING_TS_30_MIN: LocalTradingTimestamps =
-        LocalTradingTimestamps::new("30m", Arc::clone(&LOCAL_TRADING_DATE_BITMAP)).unwrap();
+    pub static ref LOCAL_TS_1_MIN: LocalTradingTimestamps =
+        LocalTradingTimestamps::new("1m", Arc::clone(&LOCAL_DATES)).unwrap();
+    pub static ref LOCAL_TS_5_MIN: LocalTradingTimestamps =
+        LocalTradingTimestamps::new("5m", Arc::clone(&LOCAL_DATES)).unwrap();
+    pub static ref LOCAL_TS_30_MIN: LocalTradingTimestamps =
+        LocalTradingTimestamps::new("30m", Arc::clone(&LOCAL_DATES)).unwrap();
 }
 
 impl LocalTradingTimestamps {

@@ -9,6 +9,7 @@ workspace = ".."
 chrono = { version = "0.4", features = ["serde"] }
 serde = "1.0"
 serde_derive = "1.0"
+bigdecimal = { version = "0.1", features = ["serde"] }
 tanglism-utils = { version = "0.1.0", path = "../tanglism-utils" }
 
 [dev-dependencies]
