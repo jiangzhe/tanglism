@@ -1,6 +1,6 @@
 use super::{Paginate, Pagination};
 use crate::helpers::respond_json;
-use crate::{DbPool, Error, ErrorKind, Result};
+use crate::{DbPool, Result};
 use actix_web::web::Json;
 use actix_web::{get, web};
 use chrono::NaiveDate;
@@ -35,45 +35,44 @@ pub struct RequestParam {
 #[get("/trade-days")]
 pub async fn api_get_trade_days(
     pool: web::Data<DbPool>,
-    web::Query(req): web::Query<RequestParam>,
+    web::Query(param): web::Query<RequestParam>,
 ) -> Result<Json<Response>> {
-    let resp = web::block(move || get_trade_days(&pool, req)).await?;
+    let resp = web::block(move || get_trade_days(&pool, param)).await?;
     respond_json(resp)
 }
 
 // get data from db
-pub fn get_trade_days(pool: &DbPool, req: RequestParam) -> Result<Response> {
+pub fn get_trade_days(pool: &DbPool, param: RequestParam) -> Result<Response> {
     use crate::schema::trade_days::dsl::*;
     use diesel::prelude::*;
-    if let Some(conn) = pool.try_get() {
-        // make boxed query to enable conditional where clause
-        let mut query = trade_days.into_boxed();
-        if let Some(start) = req.start {
-            query = query.filter(dt.ge(start));
-        }
-        if let Some(end) = req.end {
-            query = query.filter(dt.le(end));
-        }
-        // conditional pagination
-        if let Some(page) = req.page {
-            let page_size = req.page_size.unwrap_or(DEFAULT_PAGE_SIZE);
-            let (data, total) = query
-                .select(dt)
-                .paginate(page, page_size)
-                .load_and_count_total::<NaiveDate>(&conn)?;
-            return Ok(Response::Pagination {
-                pagination: Pagination {
-                    total,
-                    page,
-                    page_size,
-                },
-                data,
-            });
-        }
-        let rs = query.select(dt).load::<NaiveDate>(&conn)?;
-        return Ok(Response::Raw(rs));
+    let conn = pool.get()?;
+
+    // make boxed query to enable conditional where clause
+    let mut query = trade_days.into_boxed();
+    if let Some(start) = param.start {
+        query = query.filter(dt.ge(start));
     }
-    Err(Error::FailedAcquireDbConn())
+    if let Some(end) = param.end {
+        query = query.filter(dt.le(end));
+    }
+    // conditional pagination
+    if let Some(page) = param.page {
+        let page_size = param.page_size.unwrap_or(DEFAULT_PAGE_SIZE);
+        let (data, total) = query
+            .select(dt)
+            .paginate(page, page_size)
+            .load_and_count_total::<NaiveDate>(&conn)?;
+        return Ok(Response::Pagination {
+            pagination: Pagination {
+                total,
+                page,
+                page_size,
+            },
+            data,
+        });
+    }
+    let rs = query.select(dt).load::<NaiveDate>(&conn)?;
+    Ok(Response::Raw(rs))
 }
 
 #[cfg(test)]

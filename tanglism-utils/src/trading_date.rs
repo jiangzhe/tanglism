@@ -100,7 +100,7 @@ const BITS_ONE: u64 = 1u64;
 type Bits = u64;
 
 lazy_static! {
-    pub static ref LOCAL_TRADING_DATE_BITMAP: Arc<TradingDateBitmap> = {
+    pub static ref LOCAL_DATES: Arc<TradingDateBitmap> = {
         let mut tdbm = TradingDateBitmap::empty();
         for d in tanglism_data::LOCAL_TRADE_DAYS.iter() {
             tdbm.add_day_str(d);

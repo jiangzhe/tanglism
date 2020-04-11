@@ -43,11 +43,11 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             });
         }
         let mut pts_iter = self.pts.body.iter();
-        let first = *pts_iter.next().unwrap();
-        self.start = Some(first);
+        let first = pts_iter.next().cloned().unwrap();
+        self.start = Some(first.clone());
         self.tail.push(first);
         while let Some(pt) = pts_iter.next() {
-            self.consume(*pt);
+            self.consume(pt.clone());
         }
         Ok(StrokeSeq {
             body: self.sks,
@@ -58,8 +58,9 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         })
     }
 
+
     fn consume(&mut self, pt: Parting) {
-        self.tail.push(pt);
+        self.tail.push(pt.clone());
         if pt.top != self.start().top {
             self.consume_diff_dir(pt);
         } else {
@@ -68,7 +69,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
     }
 
     fn consume_diff_dir(&mut self, pt: Parting) {
-        if self.is_start_neighbor(pt) {
+        if self.is_start_neighbor(&pt) {
             // 这里不做变化
             // 可以保留的可能性是起点跳至pt点
             return;
@@ -82,7 +83,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         // 成笔
         let new_sk = Stroke {
             start_pt: self.start.take().unwrap(),
-            end_pt: pt,
+            end_pt: pt.clone(),
         };
         self.start = Some(pt);
         self.tail.clear();
@@ -90,7 +91,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
     }
 
     fn consume_same_dir(&mut self, pt: Parting) {
-        if self.is_start_neighbor(pt) {
+        if self.is_start_neighbor(&pt) {
             return;
         }
         // 顶比起点低，底比起点高
@@ -102,13 +103,13 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
 
         if let Some(last_sk) = self.sks.last_mut() {
             // 有笔，需要修改笔终点
-            last_sk.end_pt = pt;
+            last_sk.end_pt = pt.clone();
         }
         self.start.replace(pt);
         self.tail.clear();
     }
 
-    fn is_start_neighbor(&self, pt: Parting) -> bool {
+    fn is_start_neighbor(&self, pt: &Parting) -> bool {
         if let Some(start) = self.start.as_ref() {
             if let Some(indep_ts) = self.tts.next_tick(start.end_ts) {
                 if indep_ts < pt.start_ts {
@@ -120,8 +121,8 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
     }
 
     #[inline]
-    fn start(&self) -> Parting {
-        self.start.unwrap()
+    fn start(&self) -> &Parting {
+        self.start.as_ref().unwrap()
     }
 }
 
@@ -129,7 +130,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tanglism_utils::LOCAL_TRADING_TS_1_MIN;
+    use tanglism_utils::LOCAL_TS_1_MIN;
     use chrono::NaiveDateTime;
     
     #[test]
@@ -197,7 +198,7 @@ mod tests {
     }
 
     fn pts_to_sks_1_min(pts: Vec<Parting>) -> StrokeSeq {
-        pts_to_sks(&new_pts(pts), &*LOCAL_TRADING_TS_1_MIN).unwrap()
+        pts_to_sks(&new_pts(pts), &*LOCAL_TS_1_MIN).unwrap()
     }
 
     fn new_pts(pts: Vec<Parting>) -> PartingSeq {

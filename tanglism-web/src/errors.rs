@@ -42,23 +42,9 @@ impl Error {
                 .json::<ErrorResponse>(format!("Diesel Error: {}", err).into()),
             ErrorKind::Jqdata => HttpResponse::InternalServerError()
                 .json::<ErrorResponse>(format!("Jqdata Error: {}", err).into()),
+            ErrorKind::DbConn => HttpResponse::InternalServerError()
+                .json::<ErrorResponse>(format!("DbConn Error: {}", err).into()),
         }
-    }
-
-    #[allow(non_snake_case)]
-    pub fn FailedAcquireDbConn() -> Error {
-        Error::Custom(
-            ErrorKind::InternalServerError,
-            "cannot acquire database connection".into(),
-        )
-    }
-
-    #[allow(non_snake_case)]
-    pub fn OperationNotSupported() -> Error {
-        Error::Custom(
-            ErrorKind::InternalServerError,
-            "operation not supoorted".into(),
-        )
     }
 }
 
@@ -82,6 +68,7 @@ pub enum ErrorKind {
     IO,
     Diesel,
     Jqdata,
+    DbConn,
 }
 
 impl From<std::io::Error> for Error {
@@ -104,6 +91,18 @@ impl From<jqdata::Error> for Error {
 
 impl From<tanglism_utils::Error> for Error {
     fn from(err: tanglism_utils::Error) -> Error {
+        Error::custom(ErrorKind::InternalServerError, err.to_string())
+    }
+}
+
+impl From<r2d2::Error> for Error {
+    fn from(err: r2d2::Error) -> Error {
+        Error::custom(ErrorKind::DbConn, err.to_string())
+    }
+}
+
+impl From<tanglism_morph::Error> for Error {
+    fn from(err: tanglism_morph::Error) -> Error {
         Error::custom(ErrorKind::InternalServerError, err.to_string())
     }
 }

@@ -1,15 +1,14 @@
 use super::{Paginate, Pagination};
 use crate::helpers::respond_json;
 use crate::schema::securities;
-use crate::DbPool;
-use crate::{Error, Result};
+use crate::{DbPool, Result};
 use actix_web::get;
 use actix_web::web::{self, Json};
 use chrono::NaiveDate;
 use serde_derive::*;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RequestParam {
+pub struct Param {
     keyword: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
@@ -55,43 +54,41 @@ const STOCK_COLUMNS: StockColumns = (
 #[get("/keyword-stocks")]
 pub async fn api_search_keyword_stocks(
     pool: web::Data<DbPool>,
-    web::Query(req): web::Query<RequestParam>,
+    web::Query(param): web::Query<Param>,
 ) -> Result<Json<Response>> {
-    let resp = web::block(move || search_keyword_stock(&pool, req)).await?;
+    let resp = web::block(move || search_keyword_stock(&pool, param)).await?;
     respond_json(resp)
 }
 
-pub fn search_keyword_stock(pool: &DbPool, req: RequestParam) -> Result<Response> {
+pub fn search_keyword_stock(pool: &DbPool, param: Param) -> Result<Response> {
     use crate::schema::securities::dsl::*;
     use diesel::prelude::*;
-    if let Some(conn) = pool.try_get() {
-        let mut query = securities.filter(tp.eq("stock")).into_boxed();
-        if let Some(keyword) = req.keyword {
-            let code_prefix = format!("{}%", keyword);
-            let name_prefix = format!("{}%", keyword);
-            let all_match = format!("%{}%", keyword);
-            query = query.filter(
-                code.ilike(code_prefix)
-                    .or(name.ilike(name_prefix).or(display_name.ilike(all_match))),
-            );
-        }
-        if let Some(page) = req.page {
-            let page_size = req.page_size.unwrap_or(DEFAULT_PAGE_SIZE);
-            let (data, total) = query
-                .select(STOCK_COLUMNS)
-                .paginate(page, page_size)
-                .load_and_count_total::<Stock>(&conn)?;
-            return Ok(Response::Pagination {
-                pagination: Pagination {
-                    total,
-                    page,
-                    page_size,
-                },
-                data,
-            });
-        }
-        let rs = query.select(STOCK_COLUMNS).load::<Stock>(&conn)?;
-        return Ok(Response::Raw(rs));
+    let conn = pool.get()?;
+    let mut query = securities.filter(tp.eq("stock")).into_boxed();
+    if let Some(keyword) = param.keyword {
+        let code_prefix = format!("{}%", keyword);
+        let name_prefix = format!("{}%", keyword);
+        let all_match = format!("%{}%", keyword);
+        query = query.filter(
+            code.ilike(code_prefix)
+                .or(name.ilike(name_prefix).or(display_name.ilike(all_match))),
+        );
     }
-    Err(Error::FailedAcquireDbConn())
+    if let Some(page) = param.page {
+        let page_size = param.page_size.unwrap_or(DEFAULT_PAGE_SIZE);
+        let (data, total) = query
+            .select(STOCK_COLUMNS)
+            .paginate(page, page_size)
+            .load_and_count_total::<Stock>(&conn)?;
+        return Ok(Response::Pagination {
+            pagination: Pagination {
+                total,
+                page,
+                page_size,
+            },
+            data,
+        });
+    }
+    let rs = query.select(STOCK_COLUMNS).load::<Stock>(&conn)?;
+    Ok(Response::Raw(rs))
 }

@@ -34,16 +34,16 @@ impl<'k> PartingShaper<'k> {
             return;
         }
         // k1存在
-        let k1 = self.first_k.unwrap();
+        let k1 = self.first_k.as_ref().cloned().unwrap();
 
         // k2不存在
         if self.second_k.is_none() {
             // 检查k1与k的包含关系
-            match Self::inclusive_neighbor_k(k1, k, self.upward) {
+            match Self::inclusive_neighbor_k(&k1, &k, self.upward) {
                 None => {
                     // 更新k2
-                    self.second_k = Some(Self::k_to_ck(k));
                     self.upward = k.high > k1.high;
+                    self.second_k = Some(Self::k_to_ck(k));
                     return;
                 }
                 ck => {
@@ -55,12 +55,12 @@ impl<'k> PartingShaper<'k> {
         }
 
         // k2存在
-        let k2 = self.second_k.unwrap();
+        let k2 = self.second_k.as_ref().cloned().unwrap();
 
         // k3不存在
         if self.third_k.is_none() {
             // 检查k2与k的包含关系
-            let ck = Self::inclusive_neighbor_k(k2, k, self.upward);
+            let ck = Self::inclusive_neighbor_k(&k2, &k, self.upward);
             if ck.is_some() {
                 // 更新k2
                 self.second_k = ck;
@@ -80,10 +80,10 @@ impl<'k> PartingShaper<'k> {
             return;
         }
 
-        let k3 = self.third_k.unwrap();
+        let k3 = self.third_k.as_ref().cloned().unwrap();
 
         // 检查k3与k的包含关系
-        let ck = Self::inclusive_neighbor_k(k3, k, self.upward);
+        let ck = Self::inclusive_neighbor_k(&k3, &k, self.upward);
         if ck.is_some() {
             // 更新k3
             self.third_k = ck;
@@ -119,7 +119,7 @@ impl<'k> PartingShaper<'k> {
 
     fn run(mut self) -> Result<PartingSeq> {
         for k in self.ks.iter() {
-            self.consume(*k);
+            self.consume(k.clone());
         }
 
         // 结束所有k线分析后，依然存在第三根K线，说明此时三根K线刚好构成顶底分型
@@ -132,7 +132,7 @@ impl<'k> PartingShaper<'k> {
                 start_ts: k1.start_ts,
                 end_ts: k3.end_ts,
                 extremum_ts: k2.extremum_ts,
-                extremum_price: if self.upward { k2.low } else { k2.high },
+                extremum_price: if self.upward { k2.low.clone() } else { k2.high.clone() },
                 n: k1.n + k2.n + k3.n,
                 top: !self.upward,
             };
@@ -170,7 +170,7 @@ impl<'k> PartingShaper<'k> {
     }
 
     /// 辅助函数，判断相邻K线是否符合包含关系，并在符合情况下返回包含后的合并K线
-    fn inclusive_neighbor_k(k1: CK, k2: K, upward: bool) -> Option<CK> {
+    fn inclusive_neighbor_k(k1: &CK, k2: &K, upward: bool) -> Option<CK> {
         let extremum_ts = if k1.high >= k2.high && k1.low <= k2.low {
             k1.extremum_ts
         } else if k2.high >= k1.high && k2.low <= k1.low {
@@ -185,13 +185,13 @@ impl<'k> PartingShaper<'k> {
 
         let (high, low) = if upward {
             (
-                if k1.high > k2.high { k1.high } else { k2.high },
-                if k1.low > k2.low { k1.low } else { k2.low },
+                if k1.high > k2.high { k1.high.clone() } else { k2.high.clone() },
+                if k1.low > k2.low { k1.low.clone() } else { k2.low.clone() },
             )
         } else {
             (
-                if k1.high < k2.high { k1.high } else { k2.high },
-                if k1.low < k2.low { k1.low } else { k2.low },
+                if k1.high < k2.high { k1.high.clone() } else { k2.high.clone() },
+                if k1.low < k2.low { k1.low.clone() } else { k2.low.clone() },
             )
         };
         Some(CK {
@@ -210,7 +210,6 @@ impl<'k> PartingShaper<'k> {
 mod tests {
     use super::*;
     use chrono::NaiveDateTime;
-    use tanglism_utils::LOCAL_TRADING_TS_1_MIN;
 
     #[test]
     fn test_shaper_no_parting() -> Result<()> {

@@ -23,11 +23,25 @@ table! {
 }
 
 table! {
-    stock_price_ticks (code, tick) {
-        code -> Varchar,
+    stock_price_ticks (tick, code) {
         tick -> Varchar,
+        code -> Varchar,
         start_dt -> Date,
         end_dt -> Date,
+    }
+}
+
+table! {
+    stock_tick_prices (tick, code, ts) {
+        tick -> Varchar,
+        code -> Varchar,
+        ts -> Timestamp,
+        open -> Numeric,
+        close -> Numeric,
+        high -> Numeric,
+        low -> Numeric,
+        volume -> Numeric,
+        amount -> Numeric,
     }
 }
 
@@ -41,5 +55,6 @@ allow_tables_to_appear_in_same_query!(
     securities,
     stock_daily_prices,
     stock_price_ticks,
+    stock_tick_prices,
     trade_days,
 );

@@ -5,7 +5,7 @@ use tanglism_web::{server, Result};
 
 #[actix_rt::main]
 async fn main() -> Result<()> {
-    env::set_var("RUST_LOG", "actix_web=debug,actix_server=info,diesel=debug");
+    // env::set_var("RUST_LOG", "actix_web=debug,actix_server=info,diesel=debug");
     env_logger::init();
 
     let opt = ServerOpt::from_args();
@@ -14,20 +14,27 @@ async fn main() -> Result<()> {
     let dburl = if let Some(url) = opt.dburl {
         url
     } else {
-        std::env::var("DATABASE_URL").expect("DATABASE_URL should not be empty")
+        env::var("DATABASE_URL").expect("DATABASE_URL should not be empty")
     };
     let jqaccount = if let Some(account) = opt.jqaccount {
         account
     } else {
-        std::env::var("JQDATA_ACCOUNT").expect("JQDATA_ACCOUNT should not be empty")
+        env::var("JQDATA_ACCOUNT").expect("JQDATA_ACCOUNT should not be empty")
     };
-    server(opt.port, &dburl, &jqaccount).await?;
+    server(&opt.host, opt.port, &dburl, &jqaccount).await?;
     Ok(())
 }
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "tanglism-web", about = "command to run tanglism web server")]
 pub struct ServerOpt {
+    #[structopt(
+        short,
+        long,
+        help = "specify server host, by default 127.0.0.1",
+        default_value = "127.0.0.1"
+    )]
+    host: String,
     #[structopt(
         short,
         long,

@@ -11,6 +11,7 @@ where
     Ok(Json(data))
 }
 
+#[allow(dead_code)]
 pub fn respond_ok() -> Result<HttpResponse> {
     Ok(HttpResponse::Ok().body(Body::Empty))
 }
