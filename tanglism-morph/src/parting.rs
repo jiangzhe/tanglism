@@ -210,6 +210,7 @@ impl<'k> PartingShaper<'k> {
 mod tests {
     use super::*;
     use chrono::NaiveDateTime;
+    use bigdecimal::BigDecimal;
 
     #[test]
     fn test_shaper_no_parting() -> Result<()> {
@@ -244,7 +245,7 @@ mod tests {
         assert_eq!(new_ts("2020-02-01 10:01"), r.body[0].start_ts);
         assert_eq!(new_ts("2020-02-01 10:03"), r.body[0].end_ts);
         assert_eq!(new_ts("2020-02-01 10:02"), r.body[0].extremum_ts);
-        assert_eq!(10.20, r.body[0].extremum_price);
+        assert_eq!(BigDecimal::from(10.20), r.body[0].extremum_price);
         assert_eq!(true, r.body[0].top);
         Ok(())
     }
@@ -312,8 +313,8 @@ mod tests {
     fn new_k(ts: &str, high: f64, low: f64) -> K {
         K {
             ts: new_ts(ts),
-            high,
-            low,
+            high: BigDecimal::from(high),
+            low: BigDecimal::from(low),
         }
     }
 

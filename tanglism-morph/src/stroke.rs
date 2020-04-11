@@ -132,6 +132,7 @@ mod tests {
     use super::*;
     use tanglism_utils::LOCAL_TS_1_MIN;
     use chrono::NaiveDateTime;
+    use bigdecimal::BigDecimal;
     
     #[test]
     fn test_shaper_no_stroke() -> Result<()> {
@@ -228,7 +229,7 @@ mod tests {
             start_ts,
             extremum_ts,
             end_ts,
-            extremum_price,
+            extremum_price: BigDecimal::from(extremum_price),
             n,
             top,
         }

@@ -482,6 +482,7 @@ impl PendingSegment {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bigdecimal::BigDecimal;
 
     // 未确定线段
     #[test]
@@ -787,7 +788,7 @@ mod tests {
             start_ts,
             extremum_ts,
             end_ts,
-            extremum_price,
+            extremum_price: BigDecimal::from(extremum_price),
             n,
             top,
         }
