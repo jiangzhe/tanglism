@@ -8,6 +8,40 @@ var charts = (function(){
   // 线段数据
   var sgdata = [];
 
+  // k线基础配置
+  var kconf = function() {
+    // 单柱宽度，包含间隔
+    var bar_width = parseInt($("#bar_width option:selected").text());
+    // 单柱间间隔
+    var bar_padding = Math.max(bar_width / 3, 4);
+    // 柱内宽度，即显示出的红/绿柱宽度
+    var bar_inner_width = bar_width - bar_padding;
+    // 整体宽度
+    var w = bar_width * kdata.length;
+    // 整体高度
+    var h = parseInt($("#chart_height option:selected").text());
+    // 价格最大值
+    var price_max = d3.max(kdata, function(d) {
+      return d.high;
+    });
+    // 价格最小值
+    var price_min = d3.min(kdata, function(d) {
+        return d.low;
+    });
+    // 缩放比例
+    var yscale = d3.scaleLinear([price_min, price_max], [0, h]);
+
+    return {
+      bar_width,
+      bar_padding,
+      bar_inner_width,
+      w,
+      h,
+      price_max,
+      price_min,
+      yscale
+    };
+  };
   var kdata_fn = function(input) {
     if (input) {
       while(kdata.length > 0) { kdata.pop(); }
@@ -26,24 +60,140 @@ var charts = (function(){
     // 删除标题
     d3.select("#k_lines_title").remove();
   };
+  // 仅在K线图完成后调用
+  var stroke_draw = function(config) {
+    var stroke_draw_check = $("#stroke_draw").is(":checked");
+    if (!stroke_draw_check) {
+      return;
+    }
+    var conf = config || kconf();
+    // 无K线图，直接退出
+    if (d3.select("#k_lines").empty()) {
+      return;
+    }
+    // 无K线数据或笔数据，直接退出
+    if (kdata.length == 0 || skdata.length == 0) {
+      return;
+    }
+    // 双指针，查询笔所在柱状图，并添加序列号
+    var ki = 0;
+    var si = 0;
+    while (si < skdata.length && ki < kdata.length) {
+      var sk = skdata[si];
+      var k = kdata[ki];
+      if (sk.start_pt.extremum_ts === k.ts) {
+        // 起点序列号
+        sk.start_id = ki;
+        // 递增笔
+        ki++;
+      } else if (sk.end_pt.extremum_ts === k.ts) {
+        // 终点序列号
+        sk.end_id = ki;
+        // 仅递增笔，下一笔起点应与前一笔终点一致，需复用ki
+        si++;
+      } else {
+        // 未匹配到，K线号递增
+        ki++;
+      }
+    }
+
+    // 过滤出所有匹配上的笔
+    var strokes = [];
+    for (var i = 0; i < skdata.length; i++) {
+      var item = skdata[i];
+      if (item.hasOwnProperty("start_id") && item.hasOwnProperty("end_id")) {
+        strokes.push(item);
+      }
+    }
+    var svg = d3.select("#k_lines");
+    svg.selectAll("line.stroke")
+        .data(strokes)
+        .enter()
+        .append("line")
+        .attr("class", "stroke")
+        .attr("x1", function(d, i) {
+            return d.start_id * conf.bar_width + conf.bar_inner_width / 2;
+        })
+        .attr("x2", function(d, i) {
+            return d.end_id * conf.bar_width + conf.bar_inner_width / 2;
+        })
+        .attr("y1", function(d) {
+            return conf.h - conf.yscale(parseFloat(d.start_pt.extremum_price));
+        })
+        .attr("y2", function(d) {
+            return conf.h - conf.yscale(parseFloat(d.end_pt.extremum_price));
+        })
+        .attr("stroke", "blue");
+  }
+
+  var segment_draw = function(config) {
+    // 是否在图中显示线段
+    var segment_draw_check = $("#segment_draw").is(":checked");
+    if (!segment_draw_check) {
+      return;
+    }
+    var conf = config || kconf();
+    // 无K线图，直接退出
+    if (d3.select("#k_lines").empty()) {
+      return;
+    }
+    // 无K线数据或线段数据，直接退出
+    if (kdata.length == 0 || sgdata.length == 0) {
+      return;
+    }
+    // 双指针，查询笔所在柱状图，并添加序列号
+    var ki = 0;
+    var si = 0;
+    while (si < sgdata.length && ki < kdata.length) {
+      var sg = sgdata[si];
+      var k = kdata[ki];
+      if (sg.start_pt.extremum_ts === k.ts) {
+        // 起点序列号
+        sg.start_id = ki;
+        // 递增线段
+        ki++;
+      } else if (sg.end_pt.extremum_ts === k.ts) {
+        // 终点序列号
+        sg.end_id = ki;
+        // 仅递增线段，下一线段起点应与前一线段终点一致，需复用ki
+        si++;
+      } else {
+        // 未匹配到，K线号递增
+        ki++;
+      }
+    }
+
+    // 过滤出所有匹配上的线段
+    var segments = [];
+    for (var i = 0; i < sgdata.length; i++) {
+      var item = sgdata[i];
+      if (item.hasOwnProperty("start_id") && item.hasOwnProperty("end_id")) {
+        segments.push(item);
+      }
+    }
+    var svg = d3.select("#k_lines");
+    svg.selectAll("line.segment")
+        .data(segments)
+        .enter()
+        .append("line")
+        .attr("class", "segment")
+        .attr("x1", function(d, i) {
+            return d.start_id * conf.bar_width + conf.bar_inner_width / 2;
+        })
+        .attr("x2", function(d, i) {
+            return d.end_id * conf.bar_width + conf.bar_inner_width / 2;
+        })
+        .attr("y1", function(d) {
+            return conf.h - conf.yscale(parseFloat(d.start_pt.extremum_price));
+        })
+        .attr("y2", function(d) {
+            return conf.h - conf.yscale(parseFloat(d.end_pt.extremum_price));
+        })
+        .attr("stroke", "black");
+  }
+
   var kdata_draw = function() {
-    // 单柱宽度，包含间隔
-    var bar_width = parseInt($("#bar_width option:selected").text());
-    var bar_padding = Math.max(bar_width / 3, 4);
-    var bar_inner_width = bar_width - bar_padding;
-    // 整体宽度
-    var w = bar_width * kdata.length;
-    // 整体高度
-    var h = parseInt($("#chart_height option:selected").text());
-    // 最大最小值统计
-    var price_max = d3.max(kdata, function(d) {
-      return d.high;
-    });
-    var price_min = d3.min(kdata, function(d) {
-        return d.low;
-    });
-    // 缩放比例
-    var yscale = d3.scaleLinear([price_min, price_max], [0, h]);
+    var conf = kconf();
     // 创建标题
     if (!d3.select("#k_lines_title").empty()) {
       d3.select("#k_lines_title").remove();
@@ -58,8 +208,8 @@ var charts = (function(){
     var svg = d3.select("#k_container")
       .append("svg")
       .attr("id", "k_lines")
-      .attr("width", w)
-      .attr("height", h);
+      .attr("width", conf.w)
+      .attr("height", conf.h);
     // 创建单例提示
     if (!d3.select("#k_tooltip").empty()) {
       d3.select("#k_tooltip").remove();
@@ -71,15 +221,15 @@ var charts = (function(){
     // 画图
     svg.selectAll("rect").data(kdata).enter().append("rect")
         .attr("x", function(d, i) {
-            return i * bar_width;
+            return i * conf.bar_width;
         })
         .attr('y', function(d, i) {
-            return h - yscale(d3.max([d.open, d.close]));
+            return conf.h - conf.yscale(d3.max([d.open, d.close]));
         })
-        .attr('width', bar_inner_width)
+        .attr('width', conf.bar_inner_width)
         .attr("height", function(d) {
           // 当开盘与收盘价相等时，至少保证1的高度
-          return Math.max(1, Math.abs(yscale(d.open) - yscale(d.close)));
+          return Math.max(1, Math.abs(conf.yscale(d.open) - conf.yscale(d.close)));
         })
         .attr("fill", function(d) {
             if (d.open < d.close) return "red";
@@ -89,8 +239,8 @@ var charts = (function(){
           tooltip.transition()
             .duration(200)
             .style("opacity", 0.9);
-          var dt = d.date.substring(0, 10);
-          var tm = d.date.substring(11, 16);
+          var dt = d.ts.substring(0, 10);
+          var tm = d.ts.substring(11, 16);
           tooltip
             .html(
               "日期：" + dt + "<br/>" + 
@@ -109,26 +259,30 @@ var charts = (function(){
         });
   
     // 构造中线
-    svg.selectAll("line")
+    svg.selectAll("line.k")
         .data(kdata)
         .enter()
         .append("line")
+        .attr("class", "k")
         .attr("x1", function(d, i) {
-            return i * bar_width + bar_inner_width / 2;
+            return i * conf.bar_width + conf.bar_inner_width / 2;
         })
         .attr("x2", function(d, i) {
-            return i * bar_width + bar_inner_width / 2;
+            return i * conf.bar_width + conf.bar_inner_width / 2;
         })
         .attr("y1", function(d) {
-            return h - yscale(d.high);
+            return conf.h - conf.yscale(d.high);
         })
         .attr("y2", function(d) {
-            return h - yscale(d.low);
+            return conf.h - conf.yscale(d.low);
         })
         .attr("stroke", function(d) {
             if (d.open < d.close) return "red";
             return "green";
         });
+
+    stroke_draw(conf);
+    segment_draw(conf);
   };
   var pdata_fn = function(input) {
     if (input) {
@@ -358,20 +512,29 @@ var charts = (function(){
         d3.select(this).style("background-color", "white");
       });
   };
+  var clear = function() {
+    while(kdata.length > 0) { kdata.pop(); }
+    while(pdata.length > 0) { pdata.pop(); }
+    while(skdata.length > 0) { skdata.pop(); }
+    while(sgdata.length > 0) { sgdata.pop(); }
+  }
 
   return {
     kdata: kdata_fn,
-    kdata_draw: kdata_draw,
-    kdata_clear: kdata_clear,
+    kdata_draw,
+    stroke_draw,
+    segment_draw,
+    kdata_clear,
     pdata: pdata_fn,
-    pdata_table: pdata_table,
-    pdata_clear: pdata_clear,
+    pdata_table,
+    pdata_clear,
     skdata: skdata_fn,
-    skdata_table: skdata_table,
-    skdata_clear: skdata_clear,
+    skdata_table,
+    skdata_clear,
     sgdata: sgdata_fn,
-    sgdata_table: sgdata_table,
-    sgdata_clear: sgdata_clear
+    sgdata_table,
+    sgdata_clear,
+    clear
   };
 })();
 
@@ -437,6 +600,7 @@ $(document).ready(function() {
       success: function(resp) {
         charts.skdata(resp.data),
         charts.skdata_table();
+        charts.stroke_draw();
       },
       error: function(err) {
         console.log("ajax error on query strokes", err);
@@ -456,6 +620,7 @@ $(document).ready(function() {
       success: function(resp) {
         charts.sgdata(resp.data),
         charts.sgdata_table();
+        charts.segment_draw();
       },
       error: function(err) {
         console.log("ajax error on query strokes", err);
@@ -483,13 +648,15 @@ $(document).ready(function() {
       success: function(resp) {
         var kdata = $.map(resp.data, function(item) {
           return {
-            date: item.ts,
+            ts: item.ts,
             open: parseFloat(item.open),
             close: parseFloat(item.close),
             high: parseFloat(item.high),
             low: parseFloat(item.low)
           };
         });
+        // 清除所有数据
+        charts.clear();
         charts.kdata(kdata);
         charts.kdata_draw();
         if (p_check) {
