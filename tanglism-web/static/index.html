@@ -24,7 +24,7 @@
             <label for="k_check">K线</label> -->
             <input type="checkbox" id="p_check" value="parting"/>
             <label for="p_check">分型</label>
-            <input type="checkbox" id="sk_check" value="stroke"/>
+            <input type="checkbox" id="sk_check" value="stroke" checked/>
             <label for="sk_check">笔</label>
             <input type="checkbox" id="sg_check" value="segment"/>
             <label for="sg_check">线段</label>
@@ -55,6 +55,10 @@
                 <option>1500</option>
                 <option>2000</option>
             </select>
+            <input type="checkbox" id="stroke_draw" value="stroke_draw" checked/>
+            <label for="stroke_draw">显示笔</label>
+            <input type="checkbox" id="segment_draw" value="segment_draw"/>
+            <label for="segment_draw">显示线段</label>
             <input type="button" id="chart_refresh" value="刷新"/>
         </div>
         <div id="k_container" style="margin-bottom: 20px"></div>
