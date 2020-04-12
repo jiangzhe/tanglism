@@ -31,7 +31,6 @@ impl<'s> SegmentShaper<'s> {
         let mut index = 1;
         while index < len {
             let action = ps.add(input[index].clone());
-            println!("{:?}", action);
             if let Some(reset_ts) = action.reset_ts {
                 if let Some(sg) = action.sg {
                     body.push(sg);
