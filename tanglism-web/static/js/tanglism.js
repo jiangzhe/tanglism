@@ -589,12 +589,13 @@ $(document).ready(function() {
     });
   };
 
-  var skdata_ajax = function(tick, code, start_dt, end_dt) {
+  var skdata_ajax = function(tick, code, start_dt, end_dt, indep_k_check) {
     $.ajax({
       url: "api/v1/tanglism/strokes/" + encodeURIComponent(code)
         + "/ticks/" + encodeURIComponent(tick) 
         + "?start_dt=" + encodeURIComponent(start_dt) 
-        + "&end_dt=" + encodeURIComponent(end_dt),
+        + "&end_dt=" + encodeURIComponent(end_dt)
+        + "&indep_k=" + encodeURIComponent(indep_k_check),
       method: "GET",
       dataType: "json",
       success: function(resp) {
@@ -609,12 +610,13 @@ $(document).ready(function() {
     });
   };
 
-  var sgdata_ajax = function(tick, code, start_dt, end_dt) {
+  var sgdata_ajax = function(tick, code, start_dt, end_dt, indep_k_check) {
     $.ajax({
       url: "api/v1/tanglism/segments/" + encodeURIComponent(code)
         + "/ticks/" + encodeURIComponent(tick) 
         + "?start_dt=" + encodeURIComponent(start_dt) 
-        + "&end_dt=" + encodeURIComponent(end_dt),
+        + "&end_dt=" + encodeURIComponent(end_dt)
+        + "&indep_k=" + encodeURIComponent(indep_k_check),
       method: "GET",
       dataType: "json",
       success: function(resp) {
@@ -638,6 +640,7 @@ $(document).ready(function() {
     var p_check = $("#p_check").is(":checked");
     var sk_check = $("#sk_check").is(":checked");
     var sg_check = $("#sg_check").is(":checked");
+    var indep_k_check = $("#indep_k_check").is(":checked");
     $.ajax({
       url: "api/v1/stock-prices/" + encodeURIComponent(input_stock_code)
         + "/ticks/" + encodeURIComponent(input_tick) + "?start_dt="
@@ -663,10 +666,10 @@ $(document).ready(function() {
           pdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt);
         }
         if (sk_check) {
-          skdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt);
+          skdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, indep_k_check);
         }
         if (sg_check) {
-          sgdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt);
+          sgdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, indep_k_check);
         }
       },
       error: function(err) {
