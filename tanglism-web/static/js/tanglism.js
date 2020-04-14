@@ -306,13 +306,6 @@ var charts = (function(){
       pdata_clear();
       return;
     }
-    // 创建标题
-    if (!d3.select("#p_table_title").empty()) {
-      d3.select("#p_table_title").remove();
-    }
-    d3.select("#p_container").append("div")
-      .attr("id", "p_table_title")
-      .text("分型");
     // 创建表格
     if (!d3.select("#p_table").empty()) {
       d3.select("#p_table").remove();
@@ -378,13 +371,6 @@ var charts = (function(){
       skdata_clear();
       return;
     }
-    // 创建标题
-    if (!d3.select("#sk_table_title").empty()) {
-      d3.select("#sk_table_title").remove();
-    }
-    d3.select("#sk_container").append("div")
-      .attr("id", "sk_table_title")
-      .text("笔");
     // 创建表格
     if (!d3.select("#sk_table").empty()) {
       d3.select("#sk_table").remove();
@@ -456,13 +442,6 @@ var charts = (function(){
       sgdata_clear();
       return;
     }
-    // 创建标题
-    if (!d3.select("#sg_table_title").empty()) {
-      d3.select("#sg_table_title").remove();
-    }
-    d3.select("#sg_container").append("div")
-      .attr("id", "sg_table_title")
-      .text("线段");
     // 创建表格
     if (!d3.select("#sg_table").empty()) {
       d3.select("#sg_table").remove();
@@ -570,6 +549,7 @@ $(document).ready(function() {
     minDate: "2010-01-01",
     maxDate: -1
   });
+  $("#data_container").tabs();
   var pdata_ajax = function(tick, code, start_dt, end_dt) {
     $.ajax({
       url: "api/v1/tanglism/partings/" + encodeURIComponent(code)
