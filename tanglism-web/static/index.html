@@ -26,9 +26,12 @@
             <label for="p_check">分型</label>
             <input type="checkbox" id="sk_check" value="stroke" checked/>
             <label for="sk_check">笔</label>
-            <input type="checkbox" id="sg_check" value="segment"/>
+            <input type="checkbox" id="sg_check" value="segment" checked/>
             <label for="sg_check">线段</label>
+            <input type="checkbox" id="indep_k_check" value="indep_k" checked/>
+            <label for="indep_k_check">检查独立K线</label>
             <input type="submit" id="stock_submission" value="提交"/>
+            <br/>
             <label>柱宽：</label>
             <select id="bar_width">
                 <option>1</option>
@@ -57,7 +60,7 @@
             </select>
             <input type="checkbox" id="stroke_draw" value="stroke_draw" checked/>
             <label for="stroke_draw">显示笔</label>
-            <input type="checkbox" id="segment_draw" value="segment_draw"/>
+            <input type="checkbox" id="segment_draw" value="segment_draw" checked/>
             <label for="segment_draw">显示线段</label>
             <input type="button" id="chart_refresh" value="刷新"/>
         </div>

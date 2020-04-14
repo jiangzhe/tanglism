@@ -3,20 +3,28 @@ use crate::shape::{K, CK, Parting};
 
 /// 将K线图解析为分型序列
 pub fn ks_to_pts(ks: &[K]) -> Result<Vec<Parting>> {
-    PartingShaper::new(ks).run()
+    PartingShaper::new(ks, PartingConfig::default()).run()
 }
 
-struct PartingShaper<'k> {
+/// 暂时留空
+#[derive(Debug, Clone, Default)]
+pub struct PartingConfig {
+    pub inclusive_k: bool,
+}
+
+pub struct PartingShaper<'k> {
     ks: &'k [K],
     body: Vec<Parting>,
     first_k: Option<CK>,
     second_k: Option<CK>,
     third_k: Option<CK>,
     upward: bool,
+    #[allow(dead_code)]
+    cfg: PartingConfig,
 }
 
 impl<'k> PartingShaper<'k> {
-    fn new(ks: &'k [K]) -> Self {
+    fn new(ks: &'k [K], cfg: PartingConfig) -> Self {
         PartingShaper {
             ks,
             body: Vec::new(),
@@ -24,6 +32,7 @@ impl<'k> PartingShaper<'k> {
             second_k: None,
             third_k: None,
             upward: true,
+            cfg,
         }
     }
 

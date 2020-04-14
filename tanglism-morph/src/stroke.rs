@@ -1,6 +1,7 @@
 use crate::Result;
 use crate::shape::{Parting, Stroke};
 use tanglism_utils::TradingTimestamps;
+use chrono::NaiveDateTime;
 
 /// 将分型序列解析为笔序列
 ///
@@ -13,28 +14,45 @@ pub fn pts_to_sks<T>(pts: &[Parting], tts: &T) -> Result<Vec<Stroke>>
 where
     T: TradingTimestamps,
 {
-    StrokeShaper::new(pts, tts).run()
+    StrokeShaper::new(pts, tts, StrokeConfig::default()).run()
 }
 
-struct StrokeShaper<'p, 't, T> {
+#[derive(Debug, Clone)]
+pub struct StrokeConfig {
+    // 是否检查独立K线的存在
+    pub indep_k: bool,
+}
+
+impl Default for StrokeConfig {
+    fn default() -> Self {
+        StrokeConfig{
+            indep_k: true,
+        }
+    }
+}
+
+/// 可使用更精细的生成配置进行笔分析
+pub struct StrokeShaper<'p, 't, T> {
     pts: &'p [Parting],
     tts: &'t T,
     sks: Vec<Stroke>,
     // 表示未成笔的起点序列
     pending: Vec<Parting>,
+    cfg: StrokeConfig,
 }
 
 impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
-    fn new(pts: &'p [Parting], tts: &'t T) -> Self {
+    pub fn new(pts: &'p [Parting], tts: &'t T, cfg: StrokeConfig) -> Self {
         StrokeShaper {
             pts,
             tts,
             sks: Vec::new(),
             pending: Vec::new(),
+            cfg,
         }
     }
 
-    fn run(mut self) -> Result<Vec<Stroke>> {
+    pub fn run(mut self) -> Result<Vec<Stroke>> {
         if self.pts.is_empty() {
             return Ok(Vec::new());
         }
@@ -66,23 +84,43 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             } else {
                 // 异向顶底间满足顶比底高，且有独立K线
                 if (pt.top && pt.extremum_price > sk.end_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price) {
-                    if let Some(indep_ts) = self.tts.next_tick(sk.end_pt.end_ts) {
-                        if indep_ts < pt.start_ts {
-                            // 成笔
-                            let new_sk = Stroke{
-                                start_pt: sk.end_pt.clone(),
-                                end_pt: pt,
-                            };
-                            self.sks.push(new_sk);
-                        } else {
-                            // 当不存在独立K线时，如果超越了当前笔的起始点（高于顶分型或低于底分型）
-                            // 则修改当前笔的前一笔
-                            if self.sks.len() >= 2 && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price)) {
-                                self.sks.pop().unwrap();
-                                self.sks.last_mut().unwrap().end_pt = pt;
-                            }
+                    if self.indep_check(sk.end_pt.end_ts, pt.start_ts) {
+                        // 成笔
+                        let new_sk = Stroke{
+                            start_pt: sk.end_pt.clone(),
+                            end_pt: pt,
+                        };
+                        self.sks.push(new_sk);
+                    } else {
+                        // 当不存在独立K线时，如果超越了当前笔的起始点（高于顶分型或低于底分型）
+                        // 则修改当前笔的前一笔
+                        if self.sks.len() >= 2 && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price)) {
+                            self.sks.pop().unwrap();
+                            self.sks.last_mut().unwrap().end_pt = pt;
                         }
-                    } 
+                    }
+                    // if let Some(indep_ts) = self.tts.next_tick(sk.end_pt.end_ts) {
+                    //     let indep_check = if self.cfg.indep_k {
+                    //         indep_ts < pt.start_ts
+                    //     } else {
+                    //         indep_ts <= pt.start_ts
+                    //     };
+                    //     if indep_check {
+                    //         // 成笔
+                    //         let new_sk = Stroke{
+                    //             start_pt: sk.end_pt.clone(),
+                    //             end_pt: pt,
+                    //         };
+                    //         self.sks.push(new_sk);
+                    //     } else {
+                    //         // 当不存在独立K线时，如果超越了当前笔的起始点（高于顶分型或低于底分型）
+                    //         // 则修改当前笔的前一笔
+                    //         if self.sks.len() >= 2 && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price)) {
+                    //             self.sks.pop().unwrap();
+                    //             self.sks.last_mut().unwrap().end_pt = pt;
+                    //         }
+                    //     }
+                    // } 
                 }
             }
             // 不满足任一成笔条件则丢弃
@@ -95,15 +133,13 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             // 方向不同且顶比底高
             if pt.top != p.top && ((pt.top && pt.extremum_price > p.extremum_price) || (!pt.top && pt.extremum_price < p.extremum_price)) {
                 // 比较独立K线
-                if let Some(indep_ts) = self.tts.next_tick(p.end_ts) {
-                    if indep_ts < pt.start_ts {
-                         // 成笔
-                        let new_sk = Stroke{
-                            start_pt: p.clone(),
-                            end_pt: pt.clone(),
-                        };
-                        matches.push(new_sk);
-                    }
+                if self.indep_check(p.end_ts, pt.start_ts) {
+                    // 成笔
+                    let new_sk = Stroke{
+                        start_pt: p.clone(),
+                        end_pt: pt.clone(),
+                    };
+                    matches.push(new_sk);
                 }
             }
         }
@@ -123,6 +159,20 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         }
         self.sks.push(r);
         self.pending.clear();
+    }
+
+    // 独立K线检查逻辑
+    // t1为前分型的结束时刻，t2位后分型的开始时刻
+    #[inline]
+    fn indep_check(&self, end_ts: NaiveDateTime, start_ts: NaiveDateTime) -> bool {
+        if let Some(indep_ts) = self.tts.next_tick(end_ts) {
+            if self.cfg.indep_k {
+                return indep_ts < start_ts;
+            } else {
+                return indep_ts <= start_ts;
+            }
+        }
+        false
     }
 }
 
