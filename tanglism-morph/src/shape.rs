@@ -115,8 +115,8 @@ pub struct Center {
     pub shared_low: BigDecimal,
     // 共享最高点，即所有次级别走势类型的最高点中的最低点
     pub shared_high: BigDecimal,
-    // 是否起始于向上走势中
-    pub upward: bool,
+    // 中枢扩展
+    pub extension: Extension,
     // 级别
     // 1 -> 5分钟线中枢
     // 2 -> 30分钟线中枢
@@ -126,38 +126,50 @@ pub struct Center {
     pub level: u8,
 }
 
+/// 中枢扩展
+/// 
+/// 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Extension {
+
+}
+
 /// 走势类型
 ///
 /// 缠论的基础概念
 /// 分为趋势和盘整
 /// 趋势由至少2个没有价格区间重叠的中枢构成，趋势向上则为上涨，趋势向下则为下跌
 /// 盘整由1个中枢构成
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Trend {
-    // 起始时刻
-    pub start_ts: NaiveDateTime,
-    // 起始价格
-    pub start_price: BigDecimal,
-    // 结束时刻
-    pub end_ts: NaiveDateTime,
-    // 结束价格
-    pub end_price: BigDecimal,
-    // 中枢列表
-    pub centers: Vec<Center>,
-    // 级别
-    // 1 -> 近似5分钟线走势类型
-    // 2 -> 近似30分钟线走势类型
-    // 3 -> 近似日线走势类型
-    // 4 -> 近似周线走势类型
-    // 5 -> 近似月线走势类型
-    pub level: u8,
+pub trait Trend {
+    // 是否趋势
+    fn is_continuation(&self) -> bool;
+
+    // 是否盘整
+    fn is_consolidation(&self) -> bool {
+        !self.is_continuation()
+    }
 }
 
-/// 单标的确定周期的数据来源
-pub trait Source {
-    // 给定代码和时刻，获取该时刻前的不多于limit条数的K线数据
-    fn data_before(&self, ts: &str, limit: u32) -> Vec<K>;
+/// 完美走势
+/// 
+/// 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CompletedTrend {
+    pub start_ts: NaiveDateTime,
+    pub start_price: BigDecimal,
+    pub end_ts: NaiveDateTime,
+    pub end_price: BigDecimal,
+    pub centers: Vec<BriefCenter>,
+}
 
-    // 给定代码和时刻，获取该时刻后的不多余limit条数的K线数据
-    fn data_after(&self, ts: &str, limit: u32) -> Vec<K>;
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BriefCenter {
+    // 起始时刻
+    pub start_ts: NaiveDateTime,
+    // 结束时刻
+    pub end_ts: NaiveDateTime,
+    // 最高价
+    pub max_price: BigDecimal,
+    // 最低价
+    pub min_price: BigDecimal,
 }
