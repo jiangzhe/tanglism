@@ -1,8 +1,8 @@
 pub mod health;
 pub mod stock_prices;
 pub mod stocks;
-pub mod trade_days;
 pub mod tanglism;
+pub mod trade_days;
 
 use diesel::pg::Pg;
 use diesel::prelude::*;

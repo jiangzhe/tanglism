@@ -8,11 +8,13 @@ use actix_web::get;
 use actix_web::web::{self, Json};
 use chrono::{NaiveDate, NaiveDateTime};
 use jqdata::JqdataClient;
-use log::debug;
+use log::{debug, warn};
 use serde_derive::*;
 use std::sync::Arc;
 use tanglism_utils::{parse_date_from_str, parse_ts_from_str, TradingDates, LOCAL_DATES};
 
+// 批量插入操作的数量限制，受限于SQL的变量绑定<=65535
+const MAX_DB_INSERT_BATCH_SIZE: i64 = 5000;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -29,7 +31,6 @@ pub async fn api_get_stock_daily_prices(
     jq: web::Data<JqdataClient>,
     path: web::Path<daily::Path>,
     param: web::Query<daily::Param>,
-
 ) -> Result<Json<daily::Response>> {
     let end_dt = param
         .end_dt
@@ -72,10 +73,18 @@ pub async fn get_stock_daily_prices(
     };
     if let Some(period) = period {
         // 数据库中存在时间段，说明已进行过查询，则仅进行增量查询并插入
-
         // 当且仅当查询起始时间早于或者等于数据库中开始日期的前一个交易日，则进行API查询
         if let Some(prev_day) = LOCAL_DATES.prev_day(period.start_dt) {
             if start_dt <= prev_day {
+                let estimated_batch_size = estimate_batch_size(start_dt, prev_day, "1d");
+                if estimated_batch_size >= MAX_DB_INSERT_BATCH_SIZE {
+                    warn!("Estimated db insertion batch size exceeds limitation for data from {} to {}: {} rows",
+                        start_dt, prev_day, estimated_batch_size);
+                    return Err(Error::custom(
+                        ErrorKind::BadRequest,
+                        "Date range exceeds query limit".to_owned(),
+                    ));
+                }
                 debug!(
                     "{} daily prices between {} and {} will be fetched via remote API",
                     &code, start_dt, prev_day
@@ -99,6 +108,15 @@ pub async fn get_stock_daily_prices(
         // 当且仅当查询结束时间晚于或等于数据库中结束日期的下一个交易日，则进行API查询
         if let Some(next_day) = LOCAL_DATES.next_day(period.end_dt) {
             if end_dt >= next_day {
+                let estimated_batch_size = estimate_batch_size(next_day, end_dt, "1d");
+                if estimated_batch_size >= MAX_DB_INSERT_BATCH_SIZE {
+                    warn!("Estimated db insertion batch size exceeds limitation for data from {} to {}: {} rows",
+                        next_day, end_dt, estimated_batch_size);
+                    return Err(Error::custom(
+                        ErrorKind::BadRequest,
+                        "Date range exceeds query limit".to_owned(),
+                    ));
+                }
                 debug!(
                     "{} daily prices between {} and {} will be fetched via remote API",
                     &code, next_day, end_dt
@@ -120,6 +138,15 @@ pub async fn get_stock_daily_prices(
         }
     } else {
         // 数据库中无区间，进行第一次全量查询并插入
+        let estimated_batch_size = estimate_batch_size(start_dt, end_dt, "1d");
+        if estimated_batch_size >= MAX_DB_INSERT_BATCH_SIZE {
+            warn!("Estimated db insertion batch size exceeds limitation for data from {} to {}: {} rows",
+                        start_dt, end_dt, estimated_batch_size);
+            return Err(Error::custom(
+                ErrorKind::BadRequest,
+                "Date range exceeds query limit".to_owned(),
+            ));
+        }
         debug!(
             "{} daily prices between {} and {} will be initially loaded",
             &code, start_dt, end_dt
@@ -188,8 +215,6 @@ pub async fn get_stock_tick_prices(
             ))
         }
     };
-    
-    let code = Arc::new(code.to_owned());
     // 起始时间大于结束时间或当天
     if start_ts > end_ts {
         return Err(Error::custom(
@@ -203,6 +228,7 @@ pub async fn get_stock_tick_prices(
         ));
     }
 
+    let code = Arc::new(code.to_owned());
     let period = {
         let code = Arc::clone(&code);
         let tick = Arc::clone(&tick);
@@ -215,11 +241,30 @@ pub async fn get_stock_tick_prices(
         // 当且仅当数据库中开始日期的前一个交易日晚于或等于给定的起始日期，则进行API查询
         if let Some(prev_day) = LOCAL_DATES.prev_day(period.start_dt) {
             if prev_day.and_hms(15, 30, 1) > start_ts {
+                let estimated_batch_size = estimate_batch_size(start_ts.date(), prev_day, &tick);
+                if estimated_batch_size >= MAX_DB_INSERT_BATCH_SIZE {
+                    warn!("Estimated db insertion batch size exceeds limitation for data from {} to {}: {} rows",
+                        start_ts.date(), prev_day, estimated_batch_size);
+                    return Err(Error::custom(
+                        ErrorKind::BadRequest,
+                        "Date range exceeds query limit".to_owned(),
+                    ));
+                }
+                debug!(
+                    "{} daily prices between {} and {} will be fetched via remote API",
+                    &code,
+                    start_ts.date(),
+                    prev_day
+                );
                 debug!(
                     "{} {} prices between {} and {} will be fetched via remote API",
-                    &code, &tick, start_ts.date(), prev_day
+                    &code,
+                    &tick,
+                    start_ts.date(),
+                    prev_day
                 );
-                let resp = ticks::query_api_prices(&jq, &tick, &code, start_ts.date(), prev_day).await?;
+                let resp =
+                    ticks::query_api_prices(&jq, &tick, &code, start_ts.date(), prev_day).await?;
                 if !resp.is_empty() {
                     let mut prices = Vec::with_capacity(resp.len());
                     for p in resp.into_iter() {
@@ -238,11 +283,24 @@ pub async fn get_stock_tick_prices(
         // 当且仅当数据库中结束日期的下一个交易日早于或等于给定的结束日期，则进行API查询
         if let Some(next_day) = LOCAL_DATES.next_day(period.end_dt) {
             if next_day <= end_ts.date() {
+                let estimated_batch_size = estimate_batch_size(next_day, end_ts.date(), &tick);
+                if estimated_batch_size >= MAX_DB_INSERT_BATCH_SIZE {
+                    warn!("Estimated db insertion batch size exceeds limitation for data from {} to {}: {} rows",
+                        next_day, end_ts.date(), estimated_batch_size);
+                    return Err(Error::custom(
+                        ErrorKind::BadRequest,
+                        "Date range exceeds query limit".to_owned(),
+                    ));
+                }
                 debug!(
                     "{} {} prices between {} and {} will be fetched via remote API",
-                    &code, &tick, next_day, end_ts.date()
+                    &code,
+                    &tick,
+                    next_day,
+                    end_ts.date()
                 );
-                let resp = ticks::query_api_prices(&jq, &tick, &code, next_day, end_ts.date()).await?;
+                let resp =
+                    ticks::query_api_prices(&jq, &tick, &code, next_day, end_ts.date()).await?;
                 if !resp.is_empty() {
                     let mut prices = Vec::with_capacity(resp.len());
                     for p in resp.into_iter() {
@@ -259,11 +317,24 @@ pub async fn get_stock_tick_prices(
         }
     } else {
         // 数据库中无区间，进行第一次全量查询并插入
+        let estimated_batch_size = estimate_batch_size(start_ts.date(), end_ts.date(), &tick);
+        if estimated_batch_size >= MAX_DB_INSERT_BATCH_SIZE {
+            warn!("Estimated db insertion batch size exceeds limitation for data from {} to {}: {} rows",
+                        start_ts.date(), end_ts.date(), estimated_batch_size);
+            return Err(Error::custom(
+                ErrorKind::BadRequest,
+                "Date range exceeds query limit".to_owned(),
+            ));
+        }
         debug!(
             "{} {} prices between {} and {} will be initially loaded",
-            &code, &tick, start_ts.date(), end_ts.date()
+            &code,
+            &tick,
+            start_ts.date(),
+            end_ts.date()
         );
-        let resp = ticks::query_api_prices(&jq, &tick, &code, start_ts.date(), end_ts.date()).await?;
+        let resp =
+            ticks::query_api_prices(&jq, &tick, &code, start_ts.date(), end_ts.date()).await?;
         if !resp.is_empty() {
             let mut prices = Vec::with_capacity(resp.len());
             for p in resp.into_iter() {
@@ -405,6 +476,33 @@ fn insert_daily_prices(
     })
 }
 
+fn estimate_batch_size(start_dt: NaiveDate, end_dt: NaiveDate, tick: &str) -> i64 {
+    let size_per_day = match tick {
+        "1d" => 1,
+        "30m" => 8,
+        "5m" => 48,
+        "1m" => 240,
+        _ => return std::i64::MAX,
+    };
+
+    let naive_size = ((end_dt - start_dt).num_days() + 1) * size_per_day;
+    if naive_size < MAX_DB_INSERT_BATCH_SIZE {
+        return naive_size;
+    }
+    let mut start = start_dt;
+    let mut size = 0;
+    while LOCAL_DATES.contains_day(start) && start <= end_dt {
+        size += size_per_day;
+
+        if let Some(next_day) = LOCAL_DATES.next_day(start) {
+            start = next_day;
+        } else {
+            return std::i64::MAX;
+        }
+    }
+    size
+}
+
 fn insert_tick_prices(
     pool: &DbPool,
     prices: &[StockTickPrice],
@@ -426,7 +524,11 @@ fn insert_tick_prices(
             diesel::insert_into(stock_tick_prices)
                 .values(prices)
                 .execute(&conn)?;
-            debug!("{} rows of stock tick[{}] prices inserted", prices.len(), input_tick);
+            debug!(
+                "{} rows of stock tick[{}] prices inserted",
+                prices.len(),
+                input_tick
+            );
         }
         // 更新价格区间
         {
