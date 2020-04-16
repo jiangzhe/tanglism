@@ -1,15 +1,15 @@
-use crate::{DbPool, Result, Error, ErrorKind};
-use serde_derive::*;
-use actix_web::{get, web};
+use super::stock_prices::{get_stock_tick_prices, ticks};
+use crate::helpers::respond_json;
+use crate::{DbPool, Error, ErrorKind, Result};
 use actix_web::web::Json;
-use tanglism_morph::{Parting, Stroke, Segment};
+use actix_web::{get, web};
 use chrono::NaiveDateTime;
 use jqdata::JqdataClient;
-use tanglism_morph::{K, ks_to_pts, StrokeShaper, StrokeConfig, sks_to_sgs};
-use super::stock_prices::{ticks, get_stock_tick_prices};
-use crate::helpers::respond_json;
-use tanglism_utils::{parse_ts_from_str, LOCAL_TS_1_MIN, LOCAL_TS_5_MIN, LOCAL_TS_30_MIN};
 use serde::Serialize;
+use serde_derive::*;
+use tanglism_morph::{ks_to_pts, sks_to_sgs, StrokeConfig, StrokeShaper, K};
+use tanglism_morph::{Parting, Segment, Stroke};
+use tanglism_utils::{parse_ts_from_str, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -35,13 +35,17 @@ pub async fn api_get_tanglism_partings(
     param: web::Query<Param>,
 ) -> Result<Json<Response<Vec<Parting>>>> {
     get_tanglism_entities(&pool, &jq, &path, &param, |prices| {
-        let ks: Vec<K> = prices.into_iter().map(|p| K{
-            ts: p.ts,
-            low: p.low,
-            high: p.high,
-        }).collect();
+        let ks: Vec<K> = prices
+            .into_iter()
+            .map(|p| K {
+                ts: p.ts,
+                low: p.low,
+                high: p.high,
+            })
+            .collect();
         ks_to_pts(&ks).map_err(|e| e.into())
-    }).await
+    })
+    .await
 }
 
 #[get("/tanglism/strokes/{code}/ticks/{tick}")]
@@ -52,21 +56,37 @@ pub async fn api_get_tanglism_strokes(
     param: web::Query<Param>,
 ) -> Result<Json<Response<Vec<Stroke>>>> {
     get_tanglism_entities(&pool, &jq, &path, &param, |prices| {
-        let ks: Vec<K> = prices.into_iter().map(|p| K{
-            ts: p.ts,
-            low: p.low,
-            high: p.high,
-        }).collect();
+        let ks: Vec<K> = prices
+            .into_iter()
+            .map(|p| K {
+                ts: p.ts,
+                low: p.low,
+                high: p.high,
+            })
+            .collect();
         let pts = ks_to_pts(&ks)?;
         // 增加对独立K线的判断
-        let cfg = param.indep_k.map(|indep_k| StrokeConfig{indep_k}).unwrap_or_default();
+        let cfg = param
+            .indep_k
+            .map(|indep_k| StrokeConfig { indep_k })
+            .unwrap_or_default();
         match path.tick.as_ref() {
-            "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg).run().map_err(|e| e.into()),
-            "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, cfg).run().map_err(|e| e.into()),
-            "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, cfg).run().map_err(|e| e.into()),
-            _ => Err(Error::custom(ErrorKind::BadRequest, format!("invalid tick: {}", &path.tick))),
+            "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg)
+                .run()
+                .map_err(|e| e.into()),
+            "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, cfg)
+                .run()
+                .map_err(|e| e.into()),
+            "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, cfg)
+                .run()
+                .map_err(|e| e.into()),
+            _ => Err(Error::custom(
+                ErrorKind::BadRequest,
+                format!("invalid tick: {}", &path.tick),
+            )),
         }
-    }).await
+    })
+    .await
 }
 
 #[get("/tanglism/segments/{code}/ticks/{tick}")]
@@ -77,24 +97,35 @@ pub async fn api_get_tanglism_segments(
     param: web::Query<Param>,
 ) -> Result<Json<Response<Vec<Segment>>>> {
     get_tanglism_entities(&pool, &jq, &path, &param, |prices| {
-        let ks: Vec<K> = prices.into_iter().map(|p| K{
-            ts: p.ts,
-            low: p.low,
-            high: p.high,
-        }).collect();
+        let ks: Vec<K> = prices
+            .into_iter()
+            .map(|p| K {
+                ts: p.ts,
+                low: p.low,
+                high: p.high,
+            })
+            .collect();
         let pts = ks_to_pts(&ks)?;
         // 增加对独立K线的判断
-        let cfg = param.indep_k.map(|indep_k| StrokeConfig{indep_k}).unwrap_or_default();
+        let cfg = param
+            .indep_k
+            .map(|indep_k| StrokeConfig { indep_k })
+            .unwrap_or_default();
         let sks = match path.tick.as_ref() {
             "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg).run()?,
             "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, cfg).run()?,
             "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, cfg).run()?,
-            _ => return Err(Error::custom(ErrorKind::BadRequest, format!("invalid tick: {}", &path.tick))),
+            _ => {
+                return Err(Error::custom(
+                    ErrorKind::BadRequest,
+                    format!("invalid tick: {}", &path.tick),
+                ))
+            }
         };
         sks_to_sgs(&sks).map_err(Into::into)
-    }).await
+    })
+    .await
 }
-
 
 async fn get_tanglism_entities<T, F>(
     pool: &DbPool,
@@ -102,10 +133,11 @@ async fn get_tanglism_entities<T, F>(
     path: &ticks::Path,
     param: &Param,
     price_fn: F,
-) -> Result<Json<Response<T>>> 
+) -> Result<Json<Response<T>>>
 where
     T: Serialize,
-    F: FnOnce(Vec<ticks::StockPrice>) -> Result<T> {
+    F: FnOnce(Vec<ticks::StockPrice>) -> Result<T>,
+{
     let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
     let end_ts = match param.end_dt {
         Some(ref s) => {
@@ -116,7 +148,7 @@ where
     };
     let prices = get_stock_tick_prices(pool, jq, &path.tick, &path.code, start_ts, end_ts).await?;
     let data = price_fn(prices)?;
-    respond_json(Response{
+    respond_json(Response {
         code: path.code.to_owned(),
         tick: path.tick.to_owned(),
         start_ts: start_ts,
@@ -124,4 +156,3 @@ where
         data,
     })
 }
-

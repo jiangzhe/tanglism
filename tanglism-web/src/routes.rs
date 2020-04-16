@@ -1,8 +1,10 @@
 use crate::handlers::health::api_get_health;
 use crate::handlers::stock_prices::{api_get_stock_daily_prices, api_get_stock_tick_prices};
 use crate::handlers::stocks::api_search_keyword_stocks;
+use crate::handlers::tanglism::{
+    api_get_tanglism_partings, api_get_tanglism_segments, api_get_tanglism_strokes,
+};
 use crate::handlers::trade_days::api_get_trade_days;
-use crate::handlers::tanglism::{api_get_tanglism_partings, api_get_tanglism_strokes, api_get_tanglism_segments};
 use actix_files::Files;
 use actix_web::web;
 
