@@ -1,7 +1,7 @@
+use crate::shape::{CStroke, Parting, Segment, Stroke};
 use crate::Result;
-use crate::shape::{Stroke, CStroke, Segment, Parting};
-use chrono::NaiveDateTime;
 use bigdecimal::BigDecimal;
+use chrono::NaiveDateTime;
 
 /// 将笔序列解析为线段序列
 pub fn sks_to_sgs(sks: &[Stroke]) -> Result<Vec<Segment>> {
@@ -14,9 +14,7 @@ pub struct SegmentShaper<'s> {
 
 impl<'s> SegmentShaper<'s> {
     fn new(sks: &'s [Stroke]) -> Self {
-        SegmentShaper{
-            sks,
-        }
+        SegmentShaper { sks }
     }
 
     fn run(self) -> Result<Vec<Segment>> {
@@ -61,7 +59,9 @@ impl<'s> SegmentShaper<'s> {
         }
         // 收集无法成线段的笔
         if let Some(last_sg) = body.last() {
-            if let Some(rest_start) = self.rfind_sk_index((len-1) as i32, last_sg.end_pt.extremum_ts) {
+            if let Some(rest_start) =
+                self.rfind_sk_index((len - 1) as i32, last_sg.end_pt.extremum_ts)
+            {
                 for i in rest_start as usize..len {
                     rest_sks.push(input[i].clone());
                 }
@@ -74,19 +74,19 @@ impl<'s> SegmentShaper<'s> {
     }
 
     fn rfind_sk_index(&self, mut index: i32, start_ts: NaiveDateTime) -> Option<i32> {
+        use std::cmp::Ordering;
         while index >= 0 {
             let curr_ts = self.sks[index as usize].start_pt.extremum_ts;
-            if curr_ts == start_ts {
-                return Some(index);
-            } else if curr_ts < start_ts {
-                return None;
+            match curr_ts.cmp(&start_ts) {
+                Ordering::Equal => return Some(index),
+                Ordering::Less => return None,
+                _ => (),
             }
             index -= 1;
         }
         None
-    } 
+    }
 }
-
 
 #[derive(Debug)]
 struct SegmentAction {
@@ -132,7 +132,7 @@ impl PendingSegment {
     // 通过一笔构造线段
     fn new(sk: Stroke) -> Self {
         let upward = sk.start_pt.extremum_price < sk.end_pt.extremum_price;
-        PendingSegment{
+        PendingSegment {
             start_pt: sk.start_pt.clone(),
             end_pt: sk.end_pt.clone(),
             gap_sg: None,
@@ -166,12 +166,11 @@ impl PendingSegment {
         // 首先将笔加入主序列
         self.ms.push(sk.clone());
         self.odd = !self.odd;
-        let action = if self.odd {
+        if self.odd {
             self.add_odd(sk)
         } else {
             self.add_even(sk)
-        };
-        action
+        }
     }
 
     // 处理与线段同向的笔
@@ -183,7 +182,10 @@ impl PendingSegment {
             // 跳空后，走出相反分型
             if self.cs_pt(&self.gap_cs, &csk0, false) {
                 let new_start_ts = self.gap_sg.as_ref().unwrap().end_pt.extremum_ts;
-                let new_start = self.find_sk(new_start_ts).cloned().expect("next start stroke not found");
+                let new_start = self
+                    .find_sk(new_start_ts)
+                    .cloned()
+                    .expect("next start stroke not found");
                 return self.action_reset(new_start);
             }
             // 存在跳空且继续突破
@@ -226,7 +228,10 @@ impl PendingSegment {
         if self.cross_over_start(&sk.end_pt.extremum_price) {
             // 无论当前是否存在线段(self.completable == true)
             // 选择当前线段（无线段则为第一笔）后的第一笔作为起始笔
-            let new_start = self.find_sk(self.end_pt.extremum_ts).cloned().expect("next start stroke not found");
+            let new_start = self
+                .find_sk(self.end_pt.extremum_ts)
+                .cloned()
+                .expect("next start stroke not found");
             return self.action_reset(new_start);
         }
 
@@ -238,7 +243,7 @@ impl PendingSegment {
 
             // 检查与特征序列最后一笔的关系
             // 包含关系需要放到分型检查之后，添加序列之前
-            if let Some(_) = Self::cs_incl_right(self.cs.last().as_ref().unwrap(), &csk0) {
+            if Self::cs_incl_right(self.cs.last().as_ref().unwrap(), &csk0).is_some() {
                 // 对于右包含情况，忽略该特征序列，直接返回
                 return self.action_none();
             }
@@ -247,7 +252,10 @@ impl PendingSegment {
             // 跳空时，忽略底分型检查，因为跳空有特殊的跳空特征序列进行检查
             // 上升线段出现顶分型，下降线段出现底分型
             if self.gap_sg.is_none() && self.cs_pt(&self.cs, &csk0, true) {
-                let new_start = self.find_sk(self.end_pt.extremum_ts).cloned().expect("next start stroke not found");
+                let new_start = self
+                    .find_sk(self.end_pt.extremum_ts)
+                    .cloned()
+                    .expect("next start stroke not found");
                 return self.action_reset(new_start);
             }
 
@@ -266,13 +274,13 @@ impl PendingSegment {
             // }
 
             // 检查跳空关系
-            if self.cs_gap(&self.cs[self.cs.len()-1], &csk0) {
-                self.gap_sg.replace(Segment{
+            if self.cs_gap(&self.cs[self.cs.len() - 1], &csk0) {
+                self.gap_sg.replace(Segment {
                     start_pt: self.start_pt.clone(),
                     end_pt: self.end_pt.clone(),
                 });
             }
-            
+
             // 插入特征序列
             self.cs.push(csk0);
 
@@ -337,11 +345,13 @@ impl PendingSegment {
     // 该函数在某些情况下不适用，可以用cs_incl_right()替换
     #[allow(dead_code)]
     #[inline]
-    fn cs_incl(csk1: &CStroke, csk2: &CStroke, upward: bool) -> Option<CStroke> {        
+    fn cs_incl(csk1: &CStroke, csk2: &CStroke, upward: bool) -> Option<CStroke> {
         // csk1包含csk2
-        if csk1.high_pt.extremum_price >= csk2.high_pt.extremum_price && csk1.low_pt.extremum_price <= csk2.low_pt.extremum_price {
+        if csk1.high_pt.extremum_price >= csk2.high_pt.extremum_price
+            && csk1.low_pt.extremum_price <= csk2.low_pt.extremum_price
+        {
             let csk = if upward {
-                CStroke{
+                CStroke {
                     high_pt: csk1.high_pt.clone(),
                     low_pt: csk2.low_pt.clone(),
                 }
@@ -355,14 +365,16 @@ impl PendingSegment {
         }
 
         // csk2包含csk1
-        if csk1.high_pt.extremum_price <= csk2.high_pt.extremum_price && csk1.low_pt.extremum_price >= csk2.low_pt.extremum_price {
+        if csk1.high_pt.extremum_price <= csk2.high_pt.extremum_price
+            && csk1.low_pt.extremum_price >= csk2.low_pt.extremum_price
+        {
             let csk = if upward {
-                CStroke{
+                CStroke {
                     high_pt: csk2.high_pt.clone(),
                     low_pt: csk1.low_pt.clone(),
                 }
             } else {
-                CStroke{
+                CStroke {
                     high_pt: csk1.high_pt.clone(),
                     low_pt: csk2.low_pt.clone(),
                 }
@@ -377,8 +389,10 @@ impl PendingSegment {
     // 对线段的特征序列，我们采用不同于k线的处理方式
     // 即忽略较小波动，而不是向上或向下压缩波动
     fn cs_incl_right(csk1: &CStroke, csk2: &CStroke) -> Option<CStroke> {
-        if csk1.high_pt.extremum_price >= csk2.high_pt.extremum_price && csk1.low_pt.extremum_price <= csk2.low_pt.extremum_price {
-            return Some(csk1.clone())
+        if csk1.high_pt.extremum_price >= csk2.high_pt.extremum_price
+            && csk1.low_pt.extremum_price <= csk2.low_pt.extremum_price
+        {
+            return Some(csk1.clone());
         }
         None
     }
@@ -387,12 +401,12 @@ impl PendingSegment {
     #[inline]
     fn cs_sk(sk: Stroke) -> CStroke {
         if sk.start_pt.extremum_price < sk.end_pt.extremum_price {
-            CStroke{
+            CStroke {
                 high_pt: sk.end_pt,
                 low_pt: sk.start_pt,
             }
         } else {
-            CStroke{
+            CStroke {
                 high_pt: sk.start_pt,
                 low_pt: sk.end_pt,
             }
@@ -406,42 +420,39 @@ impl PendingSegment {
         if len < 2 {
             return false;
         }
-        let sk1 = &cs[len-2];
-        let sk2 = &cs[len-1];
+        let sk1 = &cs[len - 2];
+        let sk2 = &cs[len - 1];
         let top_pt_check = (self.upward && forward) || (!self.upward && !forward);
         if top_pt_check {
             // 顶分型，放松第一二元素的底价要求
-            sk1.high_pt.extremum_price < sk2.high_pt.extremum_price && 
-                sk2.high_pt.extremum_price > sk3.high_pt.extremum_price &&
-                sk2.low_pt.extremum_price > sk3.low_pt.extremum_price
+            sk1.high_pt.extremum_price < sk2.high_pt.extremum_price
+                && sk2.high_pt.extremum_price > sk3.high_pt.extremum_price
+                && sk2.low_pt.extremum_price > sk3.low_pt.extremum_price
         } else {
             // 底分型，放松第一二元素的顶价要求
-            sk1.low_pt.extremum_price > sk2.low_pt.extremum_price && 
-                sk2.low_pt.extremum_price < sk3.low_pt.extremum_price &&
-                sk2.high_pt.extremum_price < sk3.high_pt.extremum_price
+            sk1.low_pt.extremum_price > sk2.low_pt.extremum_price
+                && sk2.low_pt.extremum_price < sk3.low_pt.extremum_price
+                && sk2.high_pt.extremum_price < sk3.high_pt.extremum_price
         }
     }
 
     fn action_none(&self) -> SegmentAction {
         let sg = if self.completable {
-            Some(Segment{
+            Some(Segment {
                 start_pt: self.start_pt.clone(),
                 end_pt: self.end_pt.clone(),
             })
         } else {
             None
         };
-        SegmentAction{
-            sg,
-            reset_ts: None,
-        }
+        SegmentAction { sg, reset_ts: None }
     }
 
     // 将当前线段重置为给定的笔作为起点
     // 若有可完成的候选线段，则在结果中返回，并设置complete=true
-    fn action_reset(&mut self,  new_start: Stroke) -> SegmentAction {
+    fn action_reset(&mut self, new_start: Stroke) -> SegmentAction {
         let sg = if self.completable {
-            Some(Segment{
+            Some(Segment {
                 start_pt: self.start_pt.clone(),
                 end_pt: self.end_pt.clone(),
             })
@@ -459,7 +470,9 @@ impl PendingSegment {
 
     // 从主序列中找出指定开始时间的笔
     fn find_sk(&self, start_ts: NaiveDateTime) -> Option<&Stroke> {
-        self.ms.iter().find(|msk| msk.start_pt.extremum_ts == start_ts)
+        self.ms
+            .iter()
+            .find(|msk| msk.start_pt.extremum_ts == start_ts)
     }
 }
 
@@ -482,7 +495,7 @@ mod tests {
         assert!(!sgs.is_empty());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 11:00"), sgs[0].end_pt.extremum_ts);
-        
+
         Ok(())
     }
 
@@ -496,7 +509,7 @@ mod tests {
             new_sk("2020-02-02 11:00", 11.00, "2020-02-02 11:20", 9.00),
         ];
         let sgs = sks_to_sgs(&sks)?;
-        
+
         assert!(!sgs.is_empty());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 11:00"), sgs[0].end_pt.extremum_ts);
@@ -532,13 +545,13 @@ mod tests {
             new_sk("2020-02-02 10:50", 10.60, "2020-02-02 11:00", 9.50),
         ];
         let sgs = sks_to_sgs(&sks)?;
-        
+
         assert_eq!(2, sgs.len());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 10:30"), sgs[1].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 11:00"), sgs[1].end_pt.extremum_ts);
-        
+
         Ok(())
     }
 
@@ -555,7 +568,7 @@ mod tests {
             new_sk("2020-02-02 11:00", 10.40, "2020-02-02 11:10", 11.50),
         ];
         let sgs = sks_to_sgs(&sks)?;
-        
+
         assert_eq!(1, sgs.len());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 11:10"), sgs[0].end_pt.extremum_ts);
@@ -575,7 +588,7 @@ mod tests {
             new_sk("2020-02-02 11:00", 10.80, "2020-02-02 11:10", 11.50),
         ];
         let sgs = sks_to_sgs(&sks)?;
-        
+
         assert_eq!(1, sgs.len());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 11:10"), sgs[0].end_pt.extremum_ts);
@@ -595,7 +608,7 @@ mod tests {
             new_sk("2020-02-02 11:00", 10.80, "2020-02-02 11:10", 10.90),
         ];
         let sgs = sks_to_sgs(&sks)?;
-        
+
         assert_eq!(1, sgs.len());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
@@ -655,7 +668,7 @@ mod tests {
         assert_eq!(new_ts("2020-02-02 13:20"), sgs[2].end_pt.extremum_ts);
         Ok(())
     }
-    
+
     // 跳空缺口被笔破坏
     #[test]
     fn test_segment_gap_broken_by_stroke() -> Result<()> {
@@ -668,7 +681,7 @@ mod tests {
             new_sk("2020-02-02 10:50", 11.10, "2020-02-02 11:00", 9.80),
         ];
         let sgs = sks_to_sgs(&sks)?;
-        
+
         assert_eq!(2, sgs.len());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 10:30"), sgs[0].end_pt.extremum_ts);
@@ -689,7 +702,7 @@ mod tests {
             new_sk("2020-02-02 10:50", 11.50, "2020-02-02 11:00", 11.30),
         ];
         let sgs = sks_to_sgs(&sks)?;
-        
+
         assert_eq!(1, sgs.len());
         assert_eq!(new_ts("2020-02-02 10:00"), sgs[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-02 10:50"), sgs[0].end_pt.extremum_ts);
@@ -748,10 +761,7 @@ mod tests {
         let upward = start_price < end_price;
         let start_pt = new_pt_fix_width(start_ts, 1, start_price, 3, !upward);
         let end_pt = new_pt_fix_width(end_ts, 1, end_price, 3, upward);
-        Stroke{
-            start_pt,
-            end_pt,
-        }
+        Stroke { start_pt, end_pt }
     }
 
     fn new_pt_fix_width(ts: &str, minutes: i64, extremum_price: f64, n: i32, top: bool) -> Parting {

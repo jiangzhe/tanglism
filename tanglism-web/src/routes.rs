@@ -1,5 +1,5 @@
 use crate::handlers::health::api_get_health;
-use crate::handlers::stock_prices::{api_get_stock_daily_prices, api_get_stock_tick_prices};
+use crate::handlers::stock_prices::api_get_stock_tick_prices;
 use crate::handlers::stocks::api_search_keyword_stocks;
 use crate::handlers::tanglism::{
     api_get_tanglism_partings, api_get_tanglism_segments, api_get_tanglism_strokes,
@@ -14,7 +14,6 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
             web::scope("/api/v1")
                 .service(api_get_trade_days)
                 .service(api_search_keyword_stocks)
-                .service(api_get_stock_daily_prices)
                 .service(api_get_stock_tick_prices)
                 .service(api_get_tanglism_partings)
                 .service(api_get_tanglism_strokes)
