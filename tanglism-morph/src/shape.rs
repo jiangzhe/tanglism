@@ -1,6 +1,6 @@
-use serde_derive::*;
-use chrono::NaiveDateTime;
 use bigdecimal::BigDecimal;
+use chrono::NaiveDateTime;
+use serde_derive::*;
 
 /// K线
 ///
@@ -68,7 +68,7 @@ pub struct Stroke {
 }
 
 /// 合并笔
-/// 
+///
 /// 在特征序列相邻笔出现包含关系时，合并为一笔
 /// 此时笔并不具有方向性
 #[derive(Debug, Clone, Serialize, Deserialize)]

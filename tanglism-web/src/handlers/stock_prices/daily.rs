@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+
+//! 该模块将被废弃
+
 use crate::schema::stock_daily_prices;
 use crate::{DbPool, Result};
 use bigdecimal::BigDecimal;

@@ -9,7 +9,9 @@ use serde::Serialize;
 use serde_derive::*;
 use tanglism_morph::{ks_to_pts, sks_to_sgs, StrokeConfig, StrokeShaper, K};
 use tanglism_morph::{Parting, Segment, Stroke};
-use tanglism_utils::{parse_ts_from_str, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
+use tanglism_utils::{
+    parse_ts_from_str, LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -80,6 +82,9 @@ pub async fn api_get_tanglism_strokes(
             "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, cfg)
                 .run()
                 .map_err(|e| e.into()),
+            "1d" => StrokeShaper::new(&pts, &**LOCAL_DATES, cfg)
+                .run()
+                .map_err(|e| e.into()),
             _ => Err(Error::custom(
                 ErrorKind::BadRequest,
                 format!("invalid tick: {}", &path.tick),
@@ -115,6 +120,7 @@ pub async fn api_get_tanglism_segments(
             "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg).run()?,
             "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, cfg).run()?,
             "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, cfg).run()?,
+            "1d" => StrokeShaper::new(&pts, &**LOCAL_DATES, cfg).run()?,
             _ => {
                 return Err(Error::custom(
                     ErrorKind::BadRequest,
@@ -151,8 +157,8 @@ where
     respond_json(Response {
         code: path.code.to_owned(),
         tick: path.tick.to_owned(),
-        start_ts: start_ts,
-        end_ts: end_ts,
+        start_ts,
+        end_ts,
         data,
     })
 }

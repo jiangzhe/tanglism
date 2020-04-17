@@ -1,5 +1,5 @@
+use crate::shape::{Parting, CK, K};
 use crate::Result;
-use crate::shape::{K, CK, Parting};
 
 /// 将K线图解析为分型序列
 pub fn ks_to_pts(ks: &[K]) -> Result<Vec<Parting>> {
@@ -141,7 +141,11 @@ impl<'k> PartingShaper<'k> {
                 start_ts: k1.start_ts,
                 end_ts: k3.end_ts,
                 extremum_ts: k2.extremum_ts,
-                extremum_price: if self.upward { k2.low.clone() } else { k2.high.clone() },
+                extremum_price: if self.upward {
+                    k2.low.clone()
+                } else {
+                    k2.high.clone()
+                },
                 n: k1.n + k2.n + k3.n,
                 top: !self.upward,
             };
@@ -182,13 +186,29 @@ impl<'k> PartingShaper<'k> {
 
         let (high, low) = if upward {
             (
-                if k1.high > k2.high { k1.high.clone() } else { k2.high.clone() },
-                if k1.low > k2.low { k1.low.clone() } else { k2.low.clone() },
+                if k1.high > k2.high {
+                    k1.high.clone()
+                } else {
+                    k2.high.clone()
+                },
+                if k1.low > k2.low {
+                    k1.low.clone()
+                } else {
+                    k2.low.clone()
+                },
             )
         } else {
             (
-                if k1.high < k2.high { k1.high.clone() } else { k2.high.clone() },
-                if k1.low < k2.low { k1.low.clone() } else { k2.low.clone() },
+                if k1.high < k2.high {
+                    k1.high.clone()
+                } else {
+                    k2.high.clone()
+                },
+                if k1.low < k2.low {
+                    k1.low.clone()
+                } else {
+                    k2.low.clone()
+                },
             )
         };
         Some(CK {
@@ -202,12 +222,11 @@ impl<'k> PartingShaper<'k> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDateTime;
     use bigdecimal::BigDecimal;
+    use chrono::NaiveDateTime;
 
     #[test]
     fn test_shaper_no_parting() -> Result<()> {

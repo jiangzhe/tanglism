@@ -1,7 +1,7 @@
-use crate::Result;
 use crate::shape::{Parting, Stroke};
-use tanglism_utils::TradingTimestamps;
+use crate::Result;
 use chrono::NaiveDateTime;
+use tanglism_utils::TradingTimestamps;
 
 /// 将分型序列解析为笔序列
 ///
@@ -25,9 +25,7 @@ pub struct StrokeConfig {
 
 impl Default for StrokeConfig {
     fn default() -> Self {
-        StrokeConfig{
-            indep_k: true,
-        }
+        StrokeConfig { indep_k: true }
     }
 }
 
@@ -59,7 +57,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         let mut pts_iter = self.pts.iter();
         let first = pts_iter.next().cloned().unwrap();
         self.pending = vec![first];
-        while let Some(pt) = pts_iter.next() {
+        for pt in pts_iter {
             self.consume(pt.clone());
         }
         Ok(self.sks)
@@ -77,16 +75,20 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
             // 比较方向
             if sk.end_pt.top == pt.top {
                 // 顶比前顶高，或者底比前底低，直接修改该笔
-                if (pt.top && pt.extremum_price > sk.end_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price) {
+                if (pt.top && pt.extremum_price > sk.end_pt.extremum_price)
+                    || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price)
+                {
                     self.sks.last_mut().unwrap().end_pt = pt;
                     // sk.end_pt = pt;
                 }
             } else {
                 // 异向顶底间满足顶比底高，且有独立K线
-                if (pt.top && pt.extremum_price > sk.end_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price) {
+                if (pt.top && pt.extremum_price > sk.end_pt.extremum_price)
+                    || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price)
+                {
                     if self.indep_check(sk.end_pt.end_ts, pt.start_ts) {
                         // 成笔
-                        let new_sk = Stroke{
+                        let new_sk = Stroke {
                             start_pt: sk.end_pt.clone(),
                             end_pt: pt,
                         };
@@ -94,7 +96,10 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
                     } else {
                         // 当不存在独立K线时，如果超越了当前笔的起始点（高于顶分型或低于底分型）
                         // 则修改当前笔的前一笔
-                        if self.sks.len() >= 2 && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price)) {
+                        if self.sks.len() >= 2
+                            && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price)
+                                || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price))
+                        {
                             self.sks.pop().unwrap();
                             self.sks.last_mut().unwrap().end_pt = pt;
                         }
@@ -120,7 +125,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
                     //             self.sks.last_mut().unwrap().end_pt = pt;
                     //         }
                     //     }
-                    // } 
+                    // }
                 }
             }
             // 不满足任一成笔条件则丢弃
@@ -131,11 +136,14 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         let mut matches = Vec::new();
         for p in &self.pending {
             // 方向不同且顶比底高
-            if pt.top != p.top && ((pt.top && pt.extremum_price > p.extremum_price) || (!pt.top && pt.extremum_price < p.extremum_price)) {
+            if pt.top != p.top
+                && ((pt.top && pt.extremum_price > p.extremum_price)
+                    || (!pt.top && pt.extremum_price < p.extremum_price))
+            {
                 // 比较独立K线
                 if self.indep_check(p.end_ts, pt.start_ts) {
                     // 成笔
-                    let new_sk = Stroke{
+                    let new_sk = Stroke {
                         start_pt: p.clone(),
                         end_pt: pt.clone(),
                     };
@@ -153,7 +161,9 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         // 反之亦然。
         let mut r = matches.pop().unwrap();
         while let Some(m) = matches.pop() {
-            if (&r.start_pt.extremum_price - &r.end_pt.extremum_price).abs() < (&m.start_pt.extremum_price - &m.end_pt.extremum_price).abs() {
+            if (&r.start_pt.extremum_price - &r.end_pt.extremum_price).abs()
+                < (&m.start_pt.extremum_price - &m.end_pt.extremum_price).abs()
+            {
                 r = m;
             }
         }
@@ -179,10 +189,10 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tanglism_utils::{LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, TradingTimestamps};
-    use chrono::NaiveDateTime;
     use bigdecimal::BigDecimal;
-    
+    use chrono::NaiveDateTime;
+    use tanglism_utils::{TradingTimestamps, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN};
+
     #[test]
     fn test_shaper_no_stroke() -> Result<()> {
         let sks = pts_to_sks_1_min(vec![
@@ -267,13 +277,55 @@ mod tests {
     #[test]
     fn test_shaper_one_complex_stroke_across_days() -> Result<()> {
         let sks = pts_to_sks_30_min(vec![
-            ts_pt30("2020-03-11 13:30", 1169.50, true, "2020-03-11 11:00", "2020-03-11 14:00"),
-            ts_pt30("2020-03-11 14:00", 1156.70, false, "2020-03-11 11:30", "2020-03-11 14:30"),
-            ts_pt30("2020-03-11 15:00", 1167.40, true, "2020-03-11 14:30", "2020-03-12 10:00"),
-            ts_pt30("2020-03-12 10:30", 1125.10, false, "2020-03-12 10:00", "2020-03-12 14:00"),
-            ts_pt30("2020-03-12 11:00", 1147.98, true, "2020-03-12 10:30", "2020-03-12 15:00"),
-            ts_pt30("2020-03-13 10:00", 1080.00, false, "2020-03-12 14:30", "2020-03-13 14:00"),
-            ts_pt30("2020-03-13 13:30", 1128.92, true, "2020-03-13 10:00", "2020-03-13 15:00"),
+            ts_pt30(
+                "2020-03-11 13:30",
+                1169.50,
+                true,
+                "2020-03-11 11:00",
+                "2020-03-11 14:00",
+            ),
+            ts_pt30(
+                "2020-03-11 14:00",
+                1156.70,
+                false,
+                "2020-03-11 11:30",
+                "2020-03-11 14:30",
+            ),
+            ts_pt30(
+                "2020-03-11 15:00",
+                1167.40,
+                true,
+                "2020-03-11 14:30",
+                "2020-03-12 10:00",
+            ),
+            ts_pt30(
+                "2020-03-12 10:30",
+                1125.10,
+                false,
+                "2020-03-12 10:00",
+                "2020-03-12 14:00",
+            ),
+            ts_pt30(
+                "2020-03-12 11:00",
+                1147.98,
+                true,
+                "2020-03-12 10:30",
+                "2020-03-12 15:00",
+            ),
+            ts_pt30(
+                "2020-03-13 10:00",
+                1080.00,
+                false,
+                "2020-03-12 14:30",
+                "2020-03-13 14:00",
+            ),
+            ts_pt30(
+                "2020-03-13 13:30",
+                1128.92,
+                true,
+                "2020-03-13 10:00",
+                "2020-03-13 15:00",
+            ),
         ]);
         assert_eq!(1, sks.len());
         assert_eq!(new_ts("2020-03-11 13:30"), sks[0].start_pt.extremum_ts);
@@ -286,20 +338,104 @@ mod tests {
     #[test]
     fn test_shaper_three_strokes() -> Result<()> {
         let sks = pts_to_sks_30_min(vec![
-            ts_pt30("2020-02-10 11:00", 1074.56, true, "2020-02-10 10:30", "2020-02-10 11:30"),
-            ts_pt30("2020-02-10 13:30", 1061.80, false, "2020-02-10 11:30", "2020-02-10 14:00"),
-            ts_pt30("2020-02-10 14:00", 1067.00, true, "2020-02-10 13:30", "2020-02-10 15:00"),
-            ts_pt30("2020-02-10 15:00", 1062.01, false, "2020-02-10 14:00", "2020-02-11 10:00"),
-            ts_pt30("2020-02-11 14:00", 1099.66, true, "2020-02-11 11:00", "2020-02-12 10:00"),
-            ts_pt30("2020-02-12 10:30", 1085.88, false, "2020-02-12 10:00", "2020-02-12 11:00"),
-            ts_pt30("2020-02-12 11:30", 1098.79, true, "2020-02-12 11:00", "2020-02-12 14:00"),
-            ts_pt30("2020-02-12 13:30", 1090.30, false, "2020-02-12 11:30", "2020-02-12 14:30"),
-            ts_pt30("2020-02-13 10:00", 1113.83, true, "2020-02-12 15:00", "2020-02-13 11:00"),
-            ts_pt30("2020-02-13 13:30", 1088.21, false, "2020-02-13 11:30", "2020-02-13 15:00"),
-            ts_pt30("2020-02-13 14:30", 1093.64, true, "2020-02-13 13:30", "2020-02-14 11:00"),
-            ts_pt30("2020-02-14 10:00", 1086.01, false, "2020-02-13 14:30", "2020-02-14 11:30"),
-            ts_pt30("2020-02-14 11:30", 1092.00, true, "2020-02-14 10:00", "2020-02-14 13:30"),
-            ts_pt30("2020-02-14 14:30", 1083.11, false, "2020-02-14 13:30", "2020-02-14 15:00"),
+            ts_pt30(
+                "2020-02-10 11:00",
+                1074.56,
+                true,
+                "2020-02-10 10:30",
+                "2020-02-10 11:30",
+            ),
+            ts_pt30(
+                "2020-02-10 13:30",
+                1061.80,
+                false,
+                "2020-02-10 11:30",
+                "2020-02-10 14:00",
+            ),
+            ts_pt30(
+                "2020-02-10 14:00",
+                1067.00,
+                true,
+                "2020-02-10 13:30",
+                "2020-02-10 15:00",
+            ),
+            ts_pt30(
+                "2020-02-10 15:00",
+                1062.01,
+                false,
+                "2020-02-10 14:00",
+                "2020-02-11 10:00",
+            ),
+            ts_pt30(
+                "2020-02-11 14:00",
+                1099.66,
+                true,
+                "2020-02-11 11:00",
+                "2020-02-12 10:00",
+            ),
+            ts_pt30(
+                "2020-02-12 10:30",
+                1085.88,
+                false,
+                "2020-02-12 10:00",
+                "2020-02-12 11:00",
+            ),
+            ts_pt30(
+                "2020-02-12 11:30",
+                1098.79,
+                true,
+                "2020-02-12 11:00",
+                "2020-02-12 14:00",
+            ),
+            ts_pt30(
+                "2020-02-12 13:30",
+                1090.30,
+                false,
+                "2020-02-12 11:30",
+                "2020-02-12 14:30",
+            ),
+            ts_pt30(
+                "2020-02-13 10:00",
+                1113.83,
+                true,
+                "2020-02-12 15:00",
+                "2020-02-13 11:00",
+            ),
+            ts_pt30(
+                "2020-02-13 13:30",
+                1088.21,
+                false,
+                "2020-02-13 11:30",
+                "2020-02-13 15:00",
+            ),
+            ts_pt30(
+                "2020-02-13 14:30",
+                1093.64,
+                true,
+                "2020-02-13 13:30",
+                "2020-02-14 11:00",
+            ),
+            ts_pt30(
+                "2020-02-14 10:00",
+                1086.01,
+                false,
+                "2020-02-13 14:30",
+                "2020-02-14 11:30",
+            ),
+            ts_pt30(
+                "2020-02-14 11:30",
+                1092.00,
+                true,
+                "2020-02-14 10:00",
+                "2020-02-14 13:30",
+            ),
+            ts_pt30(
+                "2020-02-14 14:30",
+                1083.11,
+                false,
+                "2020-02-14 13:30",
+                "2020-02-14 15:00",
+            ),
         ]);
         assert_eq!(3, sks.len());
         assert_eq!(new_ts("2020-02-10 11:00"), sks[0].start_pt.extremum_ts);
@@ -335,7 +471,7 @@ mod tests {
         let extremum_ts = new_ts(ts);
         let start_ts = LOCAL_TS_30_MIN.prev_tick(extremum_ts).unwrap();
         let end_ts = LOCAL_TS_30_MIN.next_tick(extremum_ts).unwrap();
-        Parting{
+        Parting {
             start_ts,
             extremum_ts,
             end_ts,
@@ -362,7 +498,7 @@ mod tests {
             start = next_ts;
         }
 
-        Parting{
+        Parting {
             start_ts,
             extremum_ts,
             end_ts,
