@@ -39,6 +39,11 @@ pub fn parse_date_from_str(s: &str) -> Result<NaiveDate> {
     Ok(dt)
 }
 
+/// 判断是否是允许交易的时刻
+fn permit_trade_time(tm: NaiveTime) -> bool {
+    (tm >= *MORNING_START && tm <= *MORNING_END) || (tm >= *AFTERNOON_START && tm <= *AFTERNOON_END)
+}
+
 // 将索引转化为日期
 // 结果必须在交易日范围内
 fn idx_to_day(idx: i64) -> Option<NaiveDate> {
@@ -297,6 +302,13 @@ impl TradingTimestamps for LocalTradingDates {
     fn next_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
         self.next_day(ts.date()).map(|t| t.and_hms(15, 0, 0))
     }
+
+    fn aligned_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
+        if self.contains_day(ts.date()) && permit_trade_time(ts.time()) {
+            return Some(NaiveDateTime::new(ts.date(), *AFTERNOON_END));
+        }
+        None
+    }
 }
 
 /// 中国交易时刻集合
@@ -418,6 +430,18 @@ impl TradingTimestamps for LocalTradingTimestamps {
             return Some(NaiveDateTime::new(prev_ts.date(), *MORNING_END));
         }
         Some(prev_ts)
+    }
+
+    fn aligned_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
+        if self.contains_day(ts.date()) && permit_trade_time(ts.time()) {
+            let rem = ts.minute() as i32 % self.tick_minutes();
+            return Some(if rem == 0 {
+                ts
+            } else {
+                ts + chrono::Duration::minutes((self.tick_minutes() - rem) as i64)
+            });
+        }
+        None
     }
 }
 
@@ -604,31 +628,66 @@ mod tests {
 
         assert_eq!(None, ltts.prev_tick(ts_02010800));
         assert_eq!(None, ltts.next_tick(ts_02010800));
-
         assert_eq!(None, ltts.prev_tick(ts_02010930));
         assert_eq!(Some(ts_02011000), ltts.next_tick(ts_02010930));
-
         assert_eq!(None, ltts.prev_tick(ts_02011000));
         assert_eq!(Some(ts_02011030), ltts.next_tick(ts_02011000));
-
         assert_eq!(Some(ts_02011130), ltts.next_tick(ts_02011100));
-
         assert_eq!(Some(ts_02011100), ltts.prev_tick(ts_02011130));
         assert_eq!(Some(ts_02011330), ltts.next_tick(ts_02011130));
-
         assert_eq!(Some(ts_02011330), ltts.next_tick(ts_02011300));
-
         assert_eq!(Some(ts_02011130), ltts.prev_tick(ts_02011330));
         assert_eq!(Some(ts_02011400), ltts.next_tick(ts_02011330));
-
         assert_eq!(Some(ts_02011430), ltts.prev_tick(ts_02011500));
         assert_eq!(Some(ts_02021000), ltts.next_tick(ts_02011500));
-
         assert_eq!(Some(ts_02011430), ltts.prev_tick(ts_02020930));
         assert_eq!(Some(ts_02021000), ltts.next_tick(ts_02020930));
-
         assert_eq!(Some(ts_02011500), ltts.prev_tick(ts_02021000));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_trading_dates_align() -> Result<()> {
+        let ts1 = NaiveDateTime::from_str("2020-02-17T09:00:00")?;
+        assert_eq!(None, LOCAL_DATES.aligned_tick(ts1));
+        let ts2 = NaiveDateTime::from_str("2020-02-17T09:40:00")?;
+        assert_eq!(
+            Some(NaiveDateTime::from_str("2020-02-17T15:00:00")?),
+            LOCAL_DATES.aligned_tick(ts2)
+        );
+        let ts3 = NaiveDateTime::from_str("2020-02-17T19:00:00")?;
+        assert_eq!(None, LOCAL_DATES.aligned_tick(ts3));
+        Ok(())
+    }
+
+    #[test]
+    fn test_trading_ts_align() -> Result<()> {
+        let ts1 = NaiveDateTime::from_str("2020-02-17T09:00:00")?;
+        assert_eq!(None, LOCAL_TS_1_MIN.aligned_tick(ts1));
+        assert_eq!(None, LOCAL_TS_5_MIN.aligned_tick(ts1));
+        assert_eq!(None, LOCAL_TS_30_MIN.aligned_tick(ts1));
+        let ts2 = NaiveDateTime::from_str("2020-02-17T19:00:00")?;
+        assert_eq!(None, LOCAL_TS_1_MIN.aligned_tick(ts2));
+        assert_eq!(None, LOCAL_TS_5_MIN.aligned_tick(ts2));
+        assert_eq!(None, LOCAL_TS_30_MIN.aligned_tick(ts2));
+        let ts3 = NaiveDateTime::from_str("2020-02-17T09:41:00")?;
+        assert_eq!(
+            Some(NaiveDateTime::from_str("2020-02-17T09:41:00")?),
+            LOCAL_TS_1_MIN.aligned_tick(ts3)
+        );
+        assert_eq!(
+            Some(NaiveDateTime::from_str("2020-02-17T09:45:00")?),
+            LOCAL_TS_5_MIN.aligned_tick(ts3)
+        );
+        assert_eq!(
+            Some(NaiveDateTime::from_str("2020-02-17T10:00:00")?),
+            LOCAL_TS_30_MIN.aligned_tick(ts3)
+        );
+        let ts4 = NaiveDateTime::from_str("2020-02-17T10:00:00")?;
+        assert_eq!(Some(ts4), LOCAL_TS_1_MIN.aligned_tick(ts4));
+        assert_eq!(Some(ts4), LOCAL_TS_5_MIN.aligned_tick(ts4));
+        assert_eq!(Some(ts4), LOCAL_TS_30_MIN.aligned_tick(ts4));
         Ok(())
     }
 }
