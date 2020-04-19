@@ -58,6 +58,12 @@ pub trait TradingTimestamps {
     ///
     /// 给定的时刻必须符合tick规则，例如当tick=5m时，ts分钟数必须为5的整数倍
     fn prev_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime>;
+
+    /// 给定任意时刻，对其到tick对应的交易时刻
+    ///
+    /// 如果该时刻可交易，将对齐到所在tick的结束时刻
+    /// 例如，tick="5m", ts="2020-02-17 09:34:00", 将返回"2020-02-17 09-35:00"
+    fn aligned_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime>;
 }
 
 /// 当天起始时刻

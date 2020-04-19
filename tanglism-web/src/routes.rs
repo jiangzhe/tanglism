@@ -2,7 +2,7 @@ use crate::handlers::health::api_get_health;
 use crate::handlers::stock_prices::api_get_stock_tick_prices;
 use crate::handlers::stocks::api_search_keyword_stocks;
 use crate::handlers::tanglism::{
-    api_get_tanglism_partings, api_get_tanglism_segments, api_get_tanglism_strokes,
+    api_get_tanglism_partings, api_get_tanglism_segments, api_get_tanglism_strokes, api_get_tanglism_subtrends
 };
 use crate::handlers::trade_days::api_get_trade_days;
 use actix_files::Files;
@@ -17,7 +17,8 @@ pub fn routes(cfg: &mut web::ServiceConfig) {
                 .service(api_get_stock_tick_prices)
                 .service(api_get_tanglism_partings)
                 .service(api_get_tanglism_strokes)
-                .service(api_get_tanglism_segments),
+                .service(api_get_tanglism_segments)
+                .service(api_get_tanglism_subtrends),
         )
         .service(
             web::scope("").default_service(

@@ -7,6 +7,8 @@ var charts = (function(){
   var skdata = [];
   // 线段数据
   var sgdata = [];
+  // 次级别走势数据
+  var stdata = [];
 
   // k线基础配置
   var kconf = function() {
@@ -124,8 +126,7 @@ var charts = (function(){
             return conf.h - conf.yscale(parseFloat(d.end_pt.extremum_price));
         })
         .attr("stroke", "blue");
-  }
-
+  };
   var segment_draw = function(config) {
     // 是否在图中显示线段
     var segment_draw_check = $("#segment_draw").is(":checked");
@@ -190,8 +191,74 @@ var charts = (function(){
             return conf.h - conf.yscale(parseFloat(d.end_pt.extremum_price));
         })
         .attr("stroke", "black");
-  }
+  };
+  var subtrend_draw = function(config) {
+    // 是否在图中显示线段
+    var subtrend_draw_check = $("#subtrend_draw").is(":checked");
+    if (!subtrend_draw_check) {
+      return;
+    }
+    var conf = config || kconf();
+    // 无K线图，直接退出
+    if (d3.select("#k_lines").empty()) {
+      return;
+    }
+    // 无K线数据或线段数据，直接退出
+    if (kdata.length == 0 || stdata.length == 0) {
+      return;
+    }
+    // 双指针，查询笔所在柱状图，并添加序列号
+    var ki = 0;
+    var si = 0;
+    while (si < stdata.length && ki < kdata.length) {
+      var st = stdata[si];
+      var k = kdata[ki];
+      if (st.data.start_ts === k.ts) {
+        // 起点序列号
+        st.start_id = ki;
+        // 递增线段
+        ki++;
+      } else if (st.data.end_ts === k.ts) {
+        // 终点序列号
+        st.end_id = ki;
+        // 仅递增线段，下一线段起点应与前一线段终点一致，需复用ki
+        si++;
+      } else {
+        // 未匹配到，K线号递增
+        ki++;
+      }
+    }
 
+    // 过滤出所有匹配上的线段
+    var subtrends = [];
+    for (var i = 0; i < stdata.length; i++) {
+      var item = stdata[i];
+      if (item.hasOwnProperty("start_id") && item.hasOwnProperty("end_id")) {
+        subtrends.push(item);
+      }
+    }
+    var svg = d3.select("#k_lines");
+    svg.selectAll("line.subtrend")
+        .data(subtrends)
+        .enter()
+        .append("line")
+        .attr("class", "subtrend")
+        .attr("x1", function(d, i) {
+            return d.start_id * conf.bar_width + conf.bar_inner_width / 2;
+        })
+        .attr("x2", function(d, i) {
+            return d.end_id * conf.bar_width + conf.bar_inner_width / 2;
+        })
+        .attr("y1", function(d) {
+            return conf.h - conf.yscale(parseFloat(d.data.start_price));
+        })
+        .attr("y2", function(d) {
+            return conf.h - conf.yscale(parseFloat(d.data.end_price));
+        })
+        .attr("stroke", function(d) {
+          return d.type === "Stroke" ? "olive" : "purple";
+        });
+  };
   var kdata_draw = function() {
     var conf = kconf();
     // 创建标题
@@ -283,6 +350,7 @@ var charts = (function(){
 
     stroke_draw(conf);
     segment_draw(conf);
+    subtrend_draw(conf);
   };
   var pdata_fn = function(input) {
     if (input) {
@@ -491,11 +559,84 @@ var charts = (function(){
         d3.select(this).style("background-color", "white");
       });
   };
+  var stdata_fn = function(input) {
+    if (input) {
+      while (stdata.length > 0) { stdata.pop(); }
+      for (var i = 0; i < input.length; i++) {
+        stdata.push(input[i]);
+      }
+      return;
+    }
+    return stdata;
+  }
+  var stdata_clear = function() {
+    // 删除表格
+    d3.select("#st_table").remove();
+    // 删除标题
+    d3.select("#st_table_title").remove();
+  }
+  var stdata_table = function() {
+    var st_check = $("#st_check").is(":checked");
+    if (!st_check) {
+      stdata_clear();
+      return;
+    }
+    // 创建表格
+    if (!d3.select("#st_table").empty()) {
+      d3.select("#st_table").remove();
+    }
+    var table = d3.select("#st_container").append("table")
+      .attr("id", "st_table")
+      .style("border-collapse", "collapse")
+      .style("border", "2px black solid");
+    // 表头
+    table.append("thead")
+      .append("tr")
+      .selectAll("th")
+      .data(["类型", "起始时刻", "起始价格", "终止时刻", "终止价格", "走向"])
+      .enter()
+      .append("th")
+      .text(function(d) {return d;})
+      .style("border", "1px black solid")
+      .style("padding", "5px")
+      .style("background-color", "lightgray")
+      .style("font-weight", "bold");
+    // 内容
+    table.append("tbody")
+      .selectAll("tr")
+      .data(stdata)
+      .enter()
+      .append("tr")
+      .selectAll("td")
+      .data(function(d) {
+        return [
+          d.type === "Stroke" ? "笔" : "线段",
+          d.data.start_ts, 
+          d.data.start_price, 
+          d.data.end_ts, 
+          d.data.end_price, 
+          parseFloat(d.data.start_price) < parseFloat(d.data.end_price) ? "上升" : "下降"
+        ];
+      })
+      .enter()
+      .append("td")
+      .style("border", "1px black solid")
+      .style("padding", "5px")
+      .style("font-size", "12px")
+      .text(function(d) {return d;})
+      .on("mouseover", function(){
+        d3.select(this).style("background-color", "powderblue");
+      })
+      .on("mouseout", function(){
+        d3.select(this).style("background-color", "white");
+      });
+  }
   var clear = function() {
     while(kdata.length > 0) { kdata.pop(); }
     while(pdata.length > 0) { pdata.pop(); }
     while(skdata.length > 0) { skdata.pop(); }
     while(sgdata.length > 0) { sgdata.pop(); }
+    while(stdata.length > 0) { stdata.pop(); }
   }
 
   return {
@@ -503,6 +644,7 @@ var charts = (function(){
     kdata_draw,
     stroke_draw,
     segment_draw,
+    subtrend_draw,
     kdata_clear,
     pdata: pdata_fn,
     pdata_table,
@@ -513,6 +655,9 @@ var charts = (function(){
     sgdata: sgdata_fn,
     sgdata_table,
     sgdata_clear,
+    stdata: stdata_fn,
+    stdata_table,
+    stdata_clear,
     clear
   };
 })();
@@ -609,6 +754,27 @@ $(document).ready(function() {
         charts.sgdata_clear();
       }
     });
+  };
+
+  var stdata_ajax = function(tick, code, start_dt, end_dt, indep_k_check) {
+    $.ajax({
+      url: "api/v1/tanglism/subtrends/" + encodeURIComponent(code)
+        + "/ticks/" + encodeURIComponent(tick) 
+        + "?start_dt=" + encodeURIComponent(start_dt) 
+        + "&end_dt=" + encodeURIComponent(end_dt)
+        + "&indep_k=" + encodeURIComponent(indep_k_check),
+      method: "GET",
+      dataType: "json",
+      success: function(resp) {
+        charts.stdata(resp.data),
+        charts.stdata_table();
+        charts.subtrend_draw();
+      },
+      error: function(err) {
+        console.log("ajax error on query strokes", err);
+        charts.stdata_clear();
+      }
+    });
   }
 
   $("#stock_submission").click(function() {
@@ -620,6 +786,7 @@ $(document).ready(function() {
     var p_check = $("#p_check").is(":checked");
     var sk_check = $("#sk_check").is(":checked");
     var sg_check = $("#sg_check").is(":checked");
+    var st_check = $("#st_check").is(":checked");
     var indep_k_check = $("#indep_k_check").is(":checked");
     $.ajax({
       url: "api/v1/stock-prices/" + encodeURIComponent(input_stock_code)
@@ -651,6 +818,9 @@ $(document).ready(function() {
         if (sg_check) {
           sgdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, indep_k_check);
         }
+        if (st_check) {
+          stdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, indep_k_check);
+        }
       },
       error: function(err) {
         console.log("ajax error on query prices", err);
@@ -663,6 +833,7 @@ $(document).ready(function() {
     charts.pdata_table();
     charts.skdata_table();
     charts.sgdata_table();
+    charts.stdata_table();
   });
 
 });

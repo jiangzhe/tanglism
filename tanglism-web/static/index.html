@@ -29,6 +29,8 @@
             <label for="sk_check">笔</label>
             <input type="checkbox" id="sg_check" value="segment" checked/>
             <label for="sg_check">线段</label>
+            <input type="checkbox" id="st_check" value="subtrend"/>
+            <label for="st_check">次级别</label>
             <input type="checkbox" id="indep_k_check" value="indep_k" checked/>
             <label for="indep_k_check">检查独立K线</label>
             <input type="submit" id="stock_submission" value="提交"/>
@@ -42,6 +44,7 @@
                 <option>5</option>
                 <option>7</option>
                 <option>10</option>
+                <option>12</option>
                 <option selected>15</option>
                 <option>20</option>
                 <option>30</option>
@@ -63,6 +66,8 @@
             <label for="stroke_draw">显示笔</label>
             <input type="checkbox" id="segment_draw" value="segment_draw" checked/>
             <label for="segment_draw">显示线段</label>
+            <input type="checkbox" id="subtrend_draw" value="subtrend_draw"/>
+            <label for="subtrend_draw">显示次级别</label>
             <input type="button" id="chart_refresh" value="刷新"/>
         </div>
         <div id="k_container" style="margin-bottom: 20px"></div>
@@ -71,10 +76,12 @@
                 <li><a href="#p_container">分型</a></li>
                 <li><a href="#sk_container">笔</a></li>
                 <li><a href="#sg_container">线段</a></li>
+                <li><a href="#st_container">次级别</a></li>
             </ul>
             <div id="p_container" style="margin-bottom: 20px"></div>
             <div id="sk_container" style="margin-bottom: 20px"></div>
             <div id="sg_container" style="margin-bottom: 20px"></div>
+            <div id="st_container" style="margin-bottom: 20px"></div>
         </div>
         <script src="./js/jquery-3.4.1.min.js"></script>
         <!-- <script src="./js/popper-1.16.0.min.js"></script> -->
