@@ -28,6 +28,43 @@ pub struct CK {
     pub low: BigDecimal,
     pub high: BigDecimal,
     pub n: i32,
+    // 价格区间，用于进行缺口判断
+    pub price_range: Option<Box<PriceRange>>,
+}
+
+impl CK {
+
+    #[inline]
+    pub fn start_high(&self) -> &BigDecimal {
+        self.price_range.as_ref().map(|pr| &pr.start_high).unwrap_or(&self.high)
+    }
+
+    #[inline]
+    pub fn start_low(&self) -> &BigDecimal {
+        self.price_range.as_ref().map(|pr| &pr.start_low).unwrap_or(&self.low)
+    }
+
+    #[inline]
+    pub fn end_high(&self) -> &BigDecimal {
+        self.price_range.as_ref().map(|pr| &pr.end_high).unwrap_or(&self.high)
+    }
+
+    #[inline]
+    pub fn end_low(&self) -> &BigDecimal {
+        self.price_range.as_ref().map(|pr| &pr.end_low).unwrap_or(&self.low)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceRange {
+    // 起始最高价
+    pub start_high: BigDecimal,
+    // 起始最低价
+    pub start_low: BigDecimal,
+    // 结束最高价
+    pub end_high: BigDecimal,
+    // 结束最高价
+    pub end_low: BigDecimal,
 }
 
 /// 分型
@@ -54,6 +91,10 @@ pub struct Parting {
     pub n: i32,
     // 是否顶分型，非顶即底分型
     pub top: bool,
+    // 左侧缺口
+    pub left_gap: Option<Gap>,
+    // 右侧缺口
+    pub right_gap: Option<Gap>,
 }
 
 /// 笔
@@ -93,4 +134,15 @@ pub struct CStroke {
 pub struct Segment {
     pub start_pt: Parting,
     pub end_pt: Parting,
+}
+
+/// 缺口
+/// 
+/// 缠论的基础概念
+/// 在该单位K线图上两相邻的K线间出现没有成交的区间（77课）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Gap {
+    pub ts: NaiveDateTime,
+    pub start_price: BigDecimal,
+    pub end_price: BigDecimal,
 }

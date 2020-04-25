@@ -7,11 +7,13 @@ use chrono::NaiveDateTime;
 use jqdata::JqdataClient;
 use serde::Serialize;
 use serde_derive::*;
-use tanglism_morph::{ks_to_pts, sks_to_sgs, StrokeConfig, StrokeShaper, K};
+use tanglism_morph::{ks_to_pts, sks_to_sgs, StrokeJudge, StrokeBacktrack, StrokeConfig, StrokeShaper, K};
 use tanglism_morph::{Parting, Segment, Stroke, SubTrend};
 use tanglism_utils::{
     parse_ts_from_str, LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN,
 };
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -26,7 +28,11 @@ pub struct Response<T> {
 pub struct Param {
     pub start_dt: String,
     pub end_dt: Option<String>,
-    pub indep_k: Option<bool>,
+    // 成笔的三种逻辑，默认使用独立K线成笔
+    // 1. indep_k=true/false 包含1独立K线/不包含独立K线
+    // 2. gap_opening=morning/all 开盘跳空/包含午盘
+    // 3. gap_ratio=0.01/.../0.10 缺口比例大于指定值
+    pub stroke_cfg: Option<String>,
 }
 
 #[get("/tanglism/partings/{code}/ticks/{tick}")]
@@ -67,11 +73,11 @@ pub async fn api_get_tanglism_strokes(
             })
             .collect();
         let pts = ks_to_pts(&ks)?;
-        // 增加对独立K线的判断
-        let cfg = param
-            .indep_k
-            .map(|indep_k| StrokeConfig { indep_k })
-            .unwrap_or_default();
+        // 增加成笔逻辑判断
+        let cfg = match param.stroke_cfg {
+            None => StrokeConfig::default(),
+            Some(ref s) => parse_stroke_cfg(s)?,
+        };
         match path.tick.as_ref() {
             "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg)
                 .run()
@@ -111,11 +117,11 @@ pub async fn api_get_tanglism_segments(
             })
             .collect();
         let pts = ks_to_pts(&ks)?;
-        // 增加对独立K线的判断
-        let cfg = param
-            .indep_k
-            .map(|indep_k| StrokeConfig { indep_k })
-            .unwrap_or_default();
+        // 增加成笔逻辑判断
+        let cfg = match param.stroke_cfg {
+            None => StrokeConfig::default(),
+            Some(ref s) => parse_stroke_cfg(s)?,
+        };
         let sks = match path.tick.as_ref() {
             "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg).run()?,
             "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, cfg).run()?,
@@ -179,11 +185,11 @@ pub async fn api_get_tanglism_subtrends(
             .collect();
         // 获取分型
         let pts = ks_to_pts(&ks)?;
-        // 获取笔
-        let cfg = param
-            .indep_k
-            .map(|indep_k| StrokeConfig { indep_k })
-            .unwrap_or_default();
+        // 增加成笔逻辑判断
+        let cfg = match param.stroke_cfg {
+            None => StrokeConfig::default(),
+            Some(ref s) => parse_stroke_cfg(s)?,
+        };
         let sks = match subtick {
             "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg).run()?,
             "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, cfg).run()?,
@@ -318,5 +324,48 @@ fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
             ErrorKind::InternalServerError,
             format!("invalid timestamp: {}", ts),
         )
+    })
+}
+
+
+fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
+    let cfg_strs: Vec<&str> = s.split(',').collect();
+    let mut judge = StrokeJudge::IndepK;
+    let mut backtrack = StrokeBacktrack::None;
+    for c in &cfg_strs {
+        if *c == "indep_k" {
+            judge = StrokeJudge::IndepK;
+        } else if *c == "non_indep_k" {
+            judge = StrokeJudge::NonIndepK;
+        } else if c.starts_with("gap_opening") {
+            let gs: Vec<&str> = c.split('=').collect();
+            if gs.len() < 2 || gs[1] == "morning" {
+                judge = StrokeJudge::GapOpening(false);
+            } else {
+                judge = StrokeJudge::GapOpening(true);
+            }
+        } else if c.starts_with("gap_ratio") {
+            let gs: Vec<&str> = c.split('=').collect();
+            if gs.len() < 2 {
+                judge = StrokeJudge::GapRatio(BigDecimal::from_str("0.01").unwrap());
+            } else {
+                let ratio = BigDecimal::from_str(gs[1])
+                    .map_err(|_| Error::custom(ErrorKind::BadRequest, format!("invalid gap ratio: {}", gs[1])))?;
+                judge = StrokeJudge::GapRatio(ratio);
+            }
+        } else if c.starts_with("backtrack") {
+            let bs: Vec<&str> = c.split("=").collect();
+            if bs.len() < 2 {
+                backtrack = StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap());
+            } else {
+                let diff = BigDecimal::from_str(bs[1])
+                    .map_err(|_| Error::custom(ErrorKind::BadRequest, format!("invalid backtrack diff ratio: {}", bs[1])))?;
+                backtrack = StrokeBacktrack::Diff(diff);
+            }
+        }
+    }
+    Ok(StrokeConfig{
+        judge,
+        backtrack,
     })
 }

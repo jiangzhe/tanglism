@@ -7,12 +7,12 @@ use std::sync::Arc;
 // 时间范围为：2010-01-01 ~ 2099-12-31
 // 对时刻进行限制：上午9:30 ~ 11:30，下午13:00 ~ 15:00
 lazy_static! {
-    static ref FIRST_DAY: NaiveDate = NaiveDate::from_ymd(2010, 1, 1);
-    static ref LAST_DAY: NaiveDate = NaiveDate::from_ymd(2099, 12, 31);
-    static ref MORNING_START: NaiveTime = NaiveTime::from_hms(9, 30, 0);
-    static ref MORNING_END: NaiveTime = NaiveTime::from_hms(11, 30, 0);
-    static ref AFTERNOON_START: NaiveTime = NaiveTime::from_hms(13, 0, 0);
-    static ref AFTERNOON_END: NaiveTime = NaiveTime::from_hms(15, 0, 0);
+    pub static ref FIRST_DAY: NaiveDate = NaiveDate::from_ymd(2010, 1, 1);
+    pub static ref LAST_DAY: NaiveDate = NaiveDate::from_ymd(2099, 12, 31);
+    pub static ref MORNING_START: NaiveTime = NaiveTime::from_hms(9, 30, 0);
+    pub static ref MORNING_END: NaiveTime = NaiveTime::from_hms(11, 30, 0);
+    pub static ref AFTERNOON_START: NaiveTime = NaiveTime::from_hms(13, 0, 0);
+    pub static ref AFTERNOON_END: NaiveTime = NaiveTime::from_hms(15, 0, 0);
 }
 
 const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M";

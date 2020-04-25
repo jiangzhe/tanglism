@@ -21,54 +21,74 @@
                 <option selected>30m</option>
                 <option>1d</option>
             </select>
-            <!-- <input type="checkbox" id="k_check" value="k" checked/>
-            <label for="k_check">K线</label> -->
-            <input type="checkbox" id="p_check" value="parting"/>
-            <label for="p_check">分型</label>
-            <input type="checkbox" id="sk_check" value="stroke" checked/>
-            <label for="sk_check">笔</label>
-            <input type="checkbox" id="sg_check" value="segment" checked/>
-            <label for="sg_check">线段</label>
-            <input type="checkbox" id="st_check" value="subtrend"/>
-            <label for="st_check">次级别</label>
-            <input type="checkbox" id="indep_k_check" value="indep_k" checked/>
-            <label for="indep_k_check">检查独立K线</label>
             <input type="submit" id="stock_submission" value="提交"/>
-            <br/>
-            <label>柱宽：</label>
-            <select id="bar_width">
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5</option>
-                <option>7</option>
-                <option>10</option>
-                <option>12</option>
-                <option selected>15</option>
-                <option>20</option>
-                <option>30</option>
-                <option>50</option>
-            </select>
-            <label>总高：</label>
-            <select id="chart_height">
-                <option>200</option>
-                <option>300</option>
-                <option selected>400</option>
-                <option>500</option>
-                <option>800</option>
-                <option>1000</option>
-                <option>1200</option>
-                <option>1500</option>
-                <option>2000</option>
-            </select>
-            <input type="checkbox" id="stroke_draw" value="stroke_draw" checked/>
-            <label for="stroke_draw">显示笔</label>
-            <input type="checkbox" id="segment_draw" value="segment_draw" checked/>
-            <label for="segment_draw">显示线段</label>
-            <input type="checkbox" id="subtrend_draw" value="subtrend_draw"/>
-            <label for="subtrend_draw">显示次级别</label>
-            <input type="button" id="chart_refresh" value="刷新"/>
+        </div>
+        <div id="parameter_bar" style="margin-bottom: 20px">
+            <h3>请求参数</h3>
+            <div>
+                <fieldset id="request_morph_fieldset">
+                    <legend>形态选择</legend>
+                    <input type="checkbox" id="p_check" value="parting"/>
+                    <label for="p_check">分型</label>
+                    <input type="checkbox" id="sk_check" value="stroke" checked/>
+                    <label for="sk_check">笔</label>
+                    <input type="checkbox" id="sg_check" value="segment" checked/>
+                    <label for="sg_check">线段</label>
+                    <input type="checkbox" id="st_check" value="subtrend"/>
+                    <label for="st_check">次级别</label>
+                </fieldset>
+                <fieldset id="request_stroke_fieldset">
+                    <legend>笔逻辑</legend>
+                    <input type="radio" id="indep_k_check" name="stroke_logic" value="indep_k" checked/>
+                    <label for="indep_k_check">检查独立K线</label>
+                    <br/>
+                    <input type="radio" id="non_indep_k_check" name="stroke_logic" value="non_indep_k"/>
+                    <label for="non_indep_k_check">不检查独立K线</label>
+                    <br/>
+                    <input type="radio" id="gap_opening_check" name="stroke_logic" value="gap_opening"/>
+                    <label for="gap_opening_check">开盘跳空缺口成笔</label>
+                    <br/>
+                    <input type="radio" id="gap_ratio_check" name="stroke_logic" value="gap_ratio"/>
+                    <label for="gap_ratio_check">跳空缺口幅度成笔</label>
+                    
+                    <span id="gap_ratio_percentage_span" style="display:none">
+                        <input type="text" id="gap_ratio_percentage" value="1"/>
+                        <label for="gap_ratio_percentage">%</label>
+                    </span>
+                    <br/>
+                </fieldset>
+            </div>
+            <h3>显示参数</h3>
+            <div>
+                <fieldset id="display_base_fieldset">
+                    <legend>基础</legend>
+                    <label>单柱宽度：</label>
+                    <input type="text" id="bar_width" name="bar_width" value="15"/>
+                    <br/>
+                    <label>柱间距：</label>
+                    <input type="radio" id="bar_padding_default" name="bar_padding" value="default" checked/>
+                    <label for="bar_padding_default">默认</label>
+                    <input type="radio" id="bar_padding_fixed" name="bar_padding" value="fixed"/>
+                    <label for="bar_padding_fixed">固定</label>
+                    <span id="bar_padding_fixed_width_span" style="display:none">
+                        <input type="text" id="bar_padding_fixed_width" value="1"/>
+                        <label for="bar_padding_fixed_width">px</label>
+                    </span>
+                    <br/>
+                    <label>K线图高度：</label>
+                    <input type="text" id="chart_height" value="400"/>
+                </fieldset>
+                <fieldset id="display_morph_fieldset">
+                    <legend>形态</legend>
+                    <input type="checkbox" id="stroke_draw" value="stroke_draw" checked/>
+                    <label for="stroke_draw">显示笔</label>
+                    <input type="checkbox" id="segment_draw" value="segment_draw" checked/>
+                    <label for="segment_draw">显示线段</label>
+                    <input type="checkbox" id="subtrend_draw" value="subtrend_draw"/>
+                    <label for="subtrend_draw">显示次级别</label>
+                    <input type="button" id="chart_refresh" value="刷新"/>
+                </fieldset>
+            </div>
         </div>
         <div id="k_container" style="margin-bottom: 20px"></div>
         <div id="data_container">
