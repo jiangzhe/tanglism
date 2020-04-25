@@ -775,6 +775,8 @@ mod tests {
             extremum_price: BigDecimal::from(extremum_price),
             n,
             top,
+            left_gap: None,
+            right_gap: None,
         }
     }
 

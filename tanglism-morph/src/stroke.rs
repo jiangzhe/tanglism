@@ -1,7 +1,9 @@
 use crate::shape::{Parting, Stroke};
 use crate::Result;
-use chrono::NaiveDateTime;
 use tanglism_utils::TradingTimestamps;
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
+use lazy_static::*;
 
 /// 将分型序列解析为笔序列
 ///
@@ -19,14 +21,40 @@ where
 
 #[derive(Debug, Clone)]
 pub struct StrokeConfig {
-    // 是否检查独立K线的存在
-    pub indep_k: bool,
+    pub judge: StrokeJudge,
+    pub backtrack: StrokeBacktrack,
 }
 
 impl Default for StrokeConfig {
     fn default() -> Self {
-        StrokeConfig { indep_k: true }
+        StrokeConfig{
+            judge: StrokeJudge::IndepK,
+            backtrack: StrokeBacktrack::None,
+        }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum StrokeJudge {
+    // 存在独立K线成笔
+    IndepK,
+    // 不需要存在独立K线即可成笔
+    NonIndepK,
+    // 开盘缺口，是否包含下午盘开盘
+    GapOpening(bool),
+    // 比例缺口
+    GapRatio(BigDecimal),
+}
+
+#[derive(Debug, Clone)]
+pub enum StrokeBacktrack {
+    None,
+    Diff(BigDecimal),
+}
+
+lazy_static! {
+    static ref GAP_MINIMAL_BASE: BigDecimal = BigDecimal::from_str("0.01").unwrap();
+    static ref GAP_ZERO: BigDecimal = BigDecimal::from(0);
 }
 
 /// 可使用更精细的生成配置进行笔分析
@@ -78,52 +106,34 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
                 if (pt.top && pt.extremum_price > sk.end_pt.extremum_price)
                     || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price)
                 {
-                    self.sks.last_mut().unwrap().end_pt = pt;
-                    // sk.end_pt = pt;
+                    self.sks.last_mut().unwrap().end_pt = pt; 
                 }
             } else {
                 // 异向顶底间满足顶比底高，且有独立K线
                 if (pt.top && pt.extremum_price > sk.end_pt.extremum_price)
                     || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price)
                 {
-                    if self.indep_check(sk.end_pt.end_ts, pt.start_ts) {
+                    if self.stroke_completed(&sk.end_pt, &pt) {
                         // 成笔
                         let new_sk = Stroke {
                             start_pt: sk.end_pt.clone(),
                             end_pt: pt,
                         };
                         self.sks.push(new_sk);
-                    } else {
-                        // 当不存在独立K线时，如果超越了当前笔的起始点（高于顶分型或低于底分型）
-                        // 则修改当前笔的前一笔
-                        if self.sks.len() >= 2
-                            && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price)
-                                || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price))
-                        {
-                            self.sks.pop().unwrap();
-                            self.sks.last_mut().unwrap().end_pt = pt;
-                        }
-                    }
-                    // if let Some(indep_ts) = self.tts.next_tick(sk.end_pt.end_ts) {
-                    //     let indep_check = if self.cfg.indep_k {
-                    //         indep_ts < pt.start_ts
-                    //     } else {
-                    //         indep_ts <= pt.start_ts
-                    //     };
-                    //     if indep_check {
-                    //         // 成笔
-                    //         let new_sk = Stroke{
-                    //             start_pt: sk.end_pt.clone(),
-                    //             end_pt: pt,
-                    //         };
-                    //         self.sks.push(new_sk);
-                    //     } else {
-                    //         // 当不存在独立K线时，如果超越了当前笔的起始点（高于顶分型或低于底分型）
-                    //         // 则修改当前笔的前一笔
-                    //         if self.sks.len() >= 2 && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price) || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price)) {
-                    //             self.sks.pop().unwrap();
-                    //             self.sks.last_mut().unwrap().end_pt = pt;
-                    //         }
+                    } else if self.backtrack_last_stroke(&pt, sk) {
+                        self.sks.pop().unwrap();
+                        self.sks.last_mut().unwrap().end_pt = pt;
+                    } 
+                    
+                    // else if let StrokeBacktrack::Diff(ref d) = self.cfg.backtrack {
+                    //     // 当不存在独立K线，且开启回溯(backtrack)模式时，如果超越了当前笔的起始点（高于顶分型或低于底分型）
+                    //     // 则修改当前笔的前一笔
+                    //     if self.sks.len() >= 2
+                    //         && ((pt.top && pt.extremum_price > sk.start_pt.extremum_price)
+                    //             || (!pt.top && pt.extremum_price < sk.start_pt.extremum_price))
+                    //     {
+                    //         self.sks.pop().unwrap();
+                    //         self.sks.last_mut().unwrap().end_pt = pt;
                     //     }
                     // }
                 }
@@ -141,7 +151,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
                     || (!pt.top && pt.extremum_price < p.extremum_price))
             {
                 // 比较独立K线
-                if self.indep_check(p.end_ts, pt.start_ts) {
+                if self.stroke_completed(&p, &pt) {
                     // 成笔
                     let new_sk = Stroke {
                         start_pt: p.clone(),
@@ -171,19 +181,82 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         self.pending.clear();
     }
 
-    // 独立K线检查逻辑
-    // t1为前分型的结束时刻，t2位后分型的开始时刻
+    // 成笔逻辑检查
+    // p1为前分型，p2为后分型
+    // 兜底策略为独立K线
     #[inline]
-    fn indep_check(&self, end_ts: NaiveDateTime, start_ts: NaiveDateTime) -> bool {
-        if let Some(indep_ts) = self.tts.next_tick(end_ts) {
-            if self.cfg.indep_k {
-                return indep_ts < start_ts;
-            } else {
-                return indep_ts <= start_ts;
+    fn stroke_completed(&self, p1: &Parting, p2: &Parting) -> bool {
+        use tanglism_utils::{AFTERNOON_END, MORNING_END};
+
+        match self.cfg.judge {
+            StrokeJudge::NonIndepK => {
+                if let Some(indep_ts) = self.tts.next_tick(p1.end_ts) {
+                    return indep_ts <= p2.start_ts;
+                }
+                return false;
+            }
+            StrokeJudge::GapOpening(afternoon) => {
+                if p1.right_gap.is_some() {
+                    // 最高/低价恰好收盘
+                    if p1.extremum_ts.time() == *AFTERNOON_END {
+                        return true;
+                    }
+                    // 中午收盘
+                    if afternoon && p1.extremum_ts.time() == *MORNING_END {
+                        return true;
+                    }
+                }
+                if p2.left_gap.is_some() {
+                    // 最高/低价恰好收盘
+                    if let Some(prev_tick) = self.tts.prev_tick(p2.extremum_ts) {
+                        if prev_tick.time() == *AFTERNOON_END {
+                            return true;
+                        }
+                        // 中午收盘
+                        if afternoon && prev_tick.time() == *MORNING_END {
+                            return true;
+                        }
+                    }
+                }
+            }
+            StrokeJudge::GapRatio(ref ratio) => {
+                if let Some(ref g1) = p1.right_gap {
+                    let ratio = ratio.clone();
+                    let mut diff = &g1.end_price - &g1.start_price;
+                    if &diff < &*GAP_ZERO {
+                        diff = - diff;
+                    }
+                    if &g1.start_price == &*GAP_ZERO {
+                        return diff / &*GAP_MINIMAL_BASE >= ratio;
+                    }
+                    return diff / &g1.start_price >= ratio;
+                }
+            }
+            _ => (),
+        }
+        // 兜底策略
+        if let Some(indep_ts) = self.tts.next_tick(p1.end_ts) {
+            return indep_ts < p2.start_ts;
+        }
+        false
+    }
+
+    fn backtrack_last_stroke(&self, pt: &Parting, sk: &Stroke) -> bool {
+        if self.sks.len() >= 2 {
+            if let StrokeBacktrack::Diff(ref d) = self.cfg.backtrack {
+                if &sk.start_pt.extremum_price == &*GAP_ZERO {
+                    return false;
+                }
+                if pt.top {
+                    return &pt.extremum_price - &sk.start_pt.extremum_price > &pt.extremum_price * d;
+                } else {
+                    return &sk.start_pt.extremum_price - &pt.extremum_price > &pt.extremum_price * d;
+                }
             }
         }
         false
     }
+
 }
 
 #[cfg(test)]
@@ -191,7 +264,8 @@ mod tests {
     use super::*;
     use bigdecimal::BigDecimal;
     use chrono::NaiveDateTime;
-    use tanglism_utils::{TradingTimestamps, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN};
+    use tanglism_utils::{TradingTimestamps, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
+    use crate::shape::*;
 
     #[test]
     fn test_shaper_no_stroke() -> Result<()> {
@@ -337,7 +411,7 @@ mod tests {
     // todo
     #[test]
     fn test_shaper_three_strokes() -> Result<()> {
-        let sks = pts_to_sks_30_min(vec![
+        let pts = vec![
             ts_pt30(
                 "2020-02-10 11:00",
                 1074.56,
@@ -436,14 +510,87 @@ mod tests {
                 "2020-02-14 13:30",
                 "2020-02-14 15:00",
             ),
-        ]);
-        assert_eq!(3, sks.len());
-        assert_eq!(new_ts("2020-02-10 11:00"), sks[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-10 15:00"), sks[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-13 10:00"), sks[1].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-14 14:30"), sks[2].end_pt.extremum_ts);
+        ];
+        // 不回溯
+        let sks1 = pts_to_sks(&pts, &*LOCAL_TS_30_MIN)?;
+        assert_eq!(3, sks1.len());
+        assert_eq!(new_ts("2020-02-10 11:00"), sks1[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-10 15:00"), sks1[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-11 14:00"), sks1[1].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-14 14:30"), sks1[2].end_pt.extremum_ts);
+        // 回溯，差值1%
+        let sks2 = StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, StrokeConfig{judge: StrokeJudge::IndepK, backtrack: StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap())}).run()?;
+        assert_eq!(3, sks1.len());
+        assert_eq!(new_ts("2020-02-10 11:00"), sks2[0].start_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-10 15:00"), sks2[0].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-13 10:00"), sks2[1].end_pt.extremum_ts);
+        assert_eq!(new_ts("2020-02-14 14:30"), sks2[2].end_pt.extremum_ts);
         Ok(())
     }
+
+    // 测试不同的成笔逻辑选项
+    #[test]
+    fn test_shaper_one_stroke_gap() -> Result<()> {
+        let mut pt1 = new_pt30("2020-02-13 15:00", 10.00, false);
+        pt1.right_gap = Some(Gap{ts: new_ts("2020-02-14 10:00"), start_price: BigDecimal::from(10.00), end_price: BigDecimal::from(10.50)});
+        let mut pt2 = new_pt30("2020-02-14 10:00", 10.50, true);
+        pt2.left_gap = Some(Gap{ts: new_ts("2020-02-13 15:00"), start_price: BigDecimal::from(10.00), end_price: BigDecimal::from(10.50)});
+        let pts = vec![pt1, pt2];
+        let sks1 = StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, StrokeConfig{judge: StrokeJudge::IndepK, backtrack: StrokeBacktrack::None}).run().unwrap();
+        assert_eq!(0, sks1.len());
+        let sks2 = StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, StrokeConfig{judge: StrokeJudge::NonIndepK, backtrack: StrokeBacktrack::None}).run().unwrap();
+        assert_eq!(0, sks2.len());
+        let sks3 = StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, StrokeConfig{judge: StrokeJudge::GapOpening(false), backtrack: StrokeBacktrack::None}).run().unwrap();
+        assert_eq!(1, sks3.len());
+        let sks4 = StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, StrokeConfig{judge: StrokeJudge::GapRatio(BigDecimal::from(0.01)), backtrack: StrokeBacktrack::None}).run().unwrap();
+        assert_eq!(1, sks4.len());
+        let sks5 = StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, StrokeConfig{judge: StrokeJudge::GapRatio(BigDecimal::from(0.08)), backtrack: StrokeBacktrack::None}).run().unwrap();
+        assert_eq!(0, sks5.len());
+        Ok(())
+    }
+
+    // // 中粮糖业2020.03.30 ~ 2020.03.21
+    // #[test]
+    // fn test_shaper_two_strokes_gap() -> Result<()> {
+    //     let pts = vec![
+    //         new_pt("2020-03-30 14:50", "2020-03-30 14:30", "2020-03-31 09:35", 8, 8.45, false),
+    //         new_pt("2020-03-31 13:55", "2020-03-31 13:50", "2020-03-31 14:05", 4, 8.87, true),
+    //         new_pt("2020-03-31 14:10", "2020-03-31 14:05", "2020-03-31 14:15", 3, 8.72, false),
+    //         new_pt("2020-03-31 14:20", "2020-03-31 14:15", "2020-03-31 14:25", 3, 8.85, true),
+    //         new_pt("2020-03-31 14:35", "2020-03-31 14:25", "2020-03-31 14:55", 7, 8.78, false),
+    //         new_pt("2020-03-31 15:00", "2020-03-31 14:40", "2020-04-01 09:40", 7, 9.16, true),
+    //         new_pt("2020-04-01 09:55", "2020-04-01 09:45", "2020-04-01 10:15", 7, 8.69, false),
+    //         new_pt("2020-04-01 10:25", "2020-04-01 10:20", "2020-04-01 10:35", 4, 8.89, true),
+    //         new_pt("2020-04-01 11:25", "2020-04-01 10:45", "2020-04-01 13:10", 12, 8.75, false),
+    //     ];
+    //     let sks = pts_to_sks(&pts, &*LOCAL_TS_5_MIN)?;
+    //     println!("{} {}", sks[0].end_pt.extremum_ts, sks[0].end_pt.extremum_price);
+    //     Ok(())
+    // }
+
+    #[test]
+    fn test_shaper_stroke_backtrack() -> Result<()> {
+        let pts = vec![
+            new_pt1("2020-03-30 09:40", 9.90, false),
+            new_pt1("2020-03-30 09:50", 10.00, true),
+            new_pt1("2020-03-30 10:00", 9.95, false),
+            new_pt1("2020-03-30 10:01", 10.15, true),
+        ];
+        // 不开启回溯
+        let sks1 = pts_to_sks(&pts, &*LOCAL_TS_1_MIN)?;
+        assert_eq!(2, sks1.len());
+        assert_eq!(new_ts("2020-03-30 10:00"), sks1[1].end_pt.extremum_ts);
+        // 开启回溯，价差为1%
+        let sks2 = StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, StrokeConfig{judge: StrokeJudge::IndepK, backtrack: StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap())}).run()?;
+        assert_eq!(1, sks2.len());
+        assert_eq!(new_ts("2020-03-30 10:01"), sks2[0].end_pt.extremum_ts);
+        // 开启回溯，价差为3%
+        let sks3 = StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, StrokeConfig{judge: StrokeJudge::IndepK, backtrack: StrokeBacktrack::Diff(BigDecimal::from_str("0.03").unwrap())}).run()?;
+        assert_eq!(2, sks3.len());
+        assert_eq!(new_ts("2020-03-30 10:00"), sks3[1].end_pt.extremum_ts);
+        Ok(())
+    }
+
 
     fn pts_to_sks_1_min(pts: Vec<Parting>) -> Vec<Stroke> {
         pts_to_sks(&pts, &*LOCAL_TS_1_MIN).unwrap()
@@ -460,6 +607,23 @@ mod tests {
             extremum_price: BigDecimal::from(price),
             n: 3,
             top,
+            left_gap: None,
+            right_gap: None,
+        }
+    }
+    fn new_pt(extremum_ts: &str, start_ts: &str, end_ts: &str, n: i32, price: f64, top: bool) -> Parting {
+        let extremum_ts = new_ts(extremum_ts);
+        let start_ts = new_ts(start_ts);
+        let end_ts = new_ts(end_ts);
+        Parting {
+            start_ts,
+            extremum_ts,
+            end_ts,
+            extremum_price: BigDecimal::from(price),
+            n,
+            top,
+            left_gap: None,
+            right_gap: None,
         }
     }
 
@@ -478,6 +642,8 @@ mod tests {
             extremum_price: BigDecimal::from(price),
             n: 3,
             top,
+            left_gap: None,
+            right_gap: None,
         }
     }
 
@@ -505,6 +671,8 @@ mod tests {
             extremum_price: BigDecimal::from(price),
             n,
             top,
+            left_gap: None,
+            right_gap: None,
         }
     }
 

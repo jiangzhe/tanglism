@@ -13,15 +13,20 @@ var charts = (function(){
   // k线基础配置
   var kconf = function() {
     // 单柱宽度，包含间隔
-    var bar_width = parseInt($("#bar_width option:selected").text());
+    var bar_width = parseFloat($("#bar_width").val());
     // 单柱间间隔
-    var bar_padding = Math.max(bar_width / 3, 4);
+    var bar_padding;
+    if ($("#bar_padding_fixed").is(":checked")) {
+      bar_padding = parseFloat($("#bar_padding_fixed_width").val());
+    } else {
+      bar_padding = Math.max(bar_width / 3, 4);
+    }
     // 柱内宽度，即显示出的红/绿柱宽度
     var bar_inner_width = bar_width - bar_padding;
     // 整体宽度
     var w = bar_width * kdata.length;
     // 整体高度
-    var h = parseInt($("#chart_height option:selected").text());
+    var h = parseInt($("#chart_height").val());
     // 价格最大值
     var price_max = d3.max(kdata, function(d) {
       return d.high;
@@ -210,19 +215,21 @@ var charts = (function(){
     // 双指针，查询笔所在柱状图，并添加序列号
     var ki = 0;
     var si = 0;
+    var start_match = false;
     while (si < stdata.length && ki < kdata.length) {
       var st = stdata[si];
       var k = kdata[ki];
-      if (st.data.start_ts === k.ts) {
+      if (!start_match && st.data.start_ts === k.ts) {
         // 起点序列号
         st.start_id = ki;
-        // 递增线段
-        ki++;
+        // 将start_match置为true
+        start_match = true;
       } else if (st.data.end_ts === k.ts) {
         // 终点序列号
         st.end_id = ki;
         // 仅递增线段，下一线段起点应与前一线段终点一致，需复用ki
         si++;
+        start_match = false;
       } else {
         // 未匹配到，K线号递增
         ki++;
@@ -256,7 +263,7 @@ var charts = (function(){
             return conf.h - conf.yscale(parseFloat(d.data.end_price));
         })
         .attr("stroke", function(d) {
-          return d.type === "Stroke" ? "olive" : "purple";
+          return d.type === "Stroke" ? "yellow" : "purple";
         });
   };
   var kdata_draw = function() {
@@ -695,6 +702,29 @@ $(document).ready(function() {
     maxDate: -1
   });
   $("#data_container").tabs();
+  $("#parameter_bar").accordion({
+    collapsible: true,
+    heightStyle: "content"
+  });
+  // 笔逻辑选择
+  $("#request_stroke_fieldset input[name='stroke_logic']").click(function(e){
+    var value = $(this).val();
+    if (value === "gap_ratio") {
+      $("#gap_ratio_percentage_span").css("display", "inline");
+    } else {
+      $("#gap_ratio_percentage_span").css("display", "none");
+    }
+  });
+  // 柱间距选择
+  $("#display_base_fieldset input[name='bar_padding']").click(function(e){
+    var value = $(this).val();
+    if (value === "fixed") {
+      $("#bar_padding_fixed_width_span").css("display", "inline");
+    } else {
+      $("#bar_padding_fixed_width_span").css("display", "none");
+    }
+  });
+
   var pdata_ajax = function(tick, code, start_dt, end_dt) {
     $.ajax({
       url: "api/v1/tanglism/partings/" + encodeURIComponent(code)
@@ -714,13 +744,13 @@ $(document).ready(function() {
     });
   };
 
-  var skdata_ajax = function(tick, code, start_dt, end_dt, indep_k_check) {
+  var skdata_ajax = function(tick, code, start_dt, end_dt, stroke_cfg) {
     $.ajax({
       url: "api/v1/tanglism/strokes/" + encodeURIComponent(code)
         + "/ticks/" + encodeURIComponent(tick) 
         + "?start_dt=" + encodeURIComponent(start_dt) 
         + "&end_dt=" + encodeURIComponent(end_dt)
-        + "&indep_k=" + encodeURIComponent(indep_k_check),
+        + "&stroke_cfg=" + encodeURIComponent(stroke_cfg),
       method: "GET",
       dataType: "json",
       success: function(resp) {
@@ -735,13 +765,13 @@ $(document).ready(function() {
     });
   };
 
-  var sgdata_ajax = function(tick, code, start_dt, end_dt, indep_k_check) {
+  var sgdata_ajax = function(tick, code, start_dt, end_dt, stroke_cfg) {
     $.ajax({
       url: "api/v1/tanglism/segments/" + encodeURIComponent(code)
         + "/ticks/" + encodeURIComponent(tick) 
         + "?start_dt=" + encodeURIComponent(start_dt) 
         + "&end_dt=" + encodeURIComponent(end_dt)
-        + "&indep_k=" + encodeURIComponent(indep_k_check),
+        + "&stroke_cfg=" + encodeURIComponent(stroke_cfg),
       method: "GET",
       dataType: "json",
       success: function(resp) {
@@ -756,13 +786,13 @@ $(document).ready(function() {
     });
   };
 
-  var stdata_ajax = function(tick, code, start_dt, end_dt, indep_k_check) {
+  var stdata_ajax = function(tick, code, start_dt, end_dt, stroke_cfg) {
     $.ajax({
       url: "api/v1/tanglism/subtrends/" + encodeURIComponent(code)
         + "/ticks/" + encodeURIComponent(tick) 
         + "?start_dt=" + encodeURIComponent(start_dt) 
         + "&end_dt=" + encodeURIComponent(end_dt)
-        + "&indep_k=" + encodeURIComponent(indep_k_check),
+        + "&stroke_cfg=" + encodeURIComponent(stroke_cfg),
       method: "GET",
       dataType: "json",
       success: function(resp) {
@@ -787,7 +817,19 @@ $(document).ready(function() {
     var sk_check = $("#sk_check").is(":checked");
     var sg_check = $("#sg_check").is(":checked");
     var st_check = $("#st_check").is(":checked");
-    var indep_k_check = $("#indep_k_check").is(":checked");
+    var stroke_logic_check = $("#request_stroke_fieldset input[name='stroke_logic']:checked").val();
+    var stroke_cfg;
+    if (stroke_logic_check === "non_indep_k") {
+      stroke_cfg = "non_indep_k";
+    } else if (stroke_logic_check === "gap_opening") {
+      stroke_cfg = "gap_opening";
+    } else if (stroke_logic_check === "gap_ratio") {
+      var gap_ratio = parseFloat($("#gap_ratio_percentage").val()) / 100;
+      stroke_cfg = "gap_ratio=" + gap_ratio;
+    } else {
+      stroke_cfg = "indep_k";
+    }
+
     $.ajax({
       url: "api/v1/stock-prices/" + encodeURIComponent(input_stock_code)
         + "/ticks/" + encodeURIComponent(input_tick) + "?start_dt="
@@ -813,13 +855,13 @@ $(document).ready(function() {
           pdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt);
         }
         if (sk_check) {
-          skdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, indep_k_check);
+          skdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, stroke_cfg);
         }
         if (sg_check) {
-          sgdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, indep_k_check);
+          sgdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, stroke_cfg);
         }
         if (st_check) {
-          stdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, indep_k_check);
+          stdata_ajax(input_tick, input_stock_code, input_start_dt, input_end_dt, stroke_cfg);
         }
       },
       error: function(err) {
