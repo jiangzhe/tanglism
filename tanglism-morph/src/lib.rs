@@ -3,7 +3,7 @@ mod parting;
 mod segment;
 mod shape;
 mod stroke;
-mod trend;
+pub mod trend;
 
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;

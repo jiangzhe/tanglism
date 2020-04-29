@@ -10,6 +10,17 @@ var charts = (function(){
   // 次级别走势数据
   var stdata = [];
 
+  // 提示框
+  var tooltip = function() {
+    var t = d3.select("#k_container div.tooltip");
+    if (!t.empty()) {
+      return t;
+    }
+    return d3.select("#k_container")
+      .append("div")
+      .attr("class", "tooltip")
+      .style("opacity", 0);
+  }
   // k线基础配置
   var kconf = function() {
     // 单柱宽度，包含间隔
@@ -64,8 +75,6 @@ var charts = (function(){
     d3.select("#k_tooltip").remove();
     // 删除svg
     d3.select("#k_lines").remove();
-    // 删除标题
-    d3.select("#k_lines_title").remove();
   };
   // 仅在K线图完成后调用
   var stroke_draw = function(config) {
@@ -130,7 +139,36 @@ var charts = (function(){
         .attr("y2", function(d) {
             return conf.h - conf.yscale(parseFloat(d.end_pt.extremum_price));
         })
-        .attr("stroke", "blue");
+        .attr("stroke", "blue")
+        .attr("stroke-width", 1)
+        .on("mouseover", function(d) {
+          tooltip().transition()
+            .duration(200)
+            .style("opacity", 0.9);
+          var start_dt = d.start_pt.extremum_ts.substring(0, 10);
+          var start_tm = d.start_pt.extremum_ts.substring(11, 16);
+          var end_dt = d.end_pt.extremum_ts.substring(0, 10);
+          var end_tm = d.end_pt.extremum_ts.substring(11, 16);
+          tooltip()
+            .html(
+              "开始日期：" + start_dt + "<br/>" + 
+              "开始时刻：" + start_tm + "<br/>" + 
+              "开始价格：" + d.start_pt.extremum_price + "<br/>" +
+              "结束日期：" + end_dt + "<br/>" +
+              "结束时刻：" + end_tm + "<br/>" +
+              "结束价格：" + d.end_pt.extremum_price)
+            .style("left", (d3.event.pageX + 30) + "px")
+            .style("top", (d3.event.pageY + 30) + "px");
+          // 加粗
+          d3.select(this).attr("stroke-width", 2);
+        })
+        .on("mouseout", function(d) {
+          tooltip().transition()
+            .duration(500)
+            .style("opacity", 0);
+          // 还原
+          d3.select(this).attr("stroke-width", 1);
+        });
   };
   var segment_draw = function(config) {
     // 是否在图中显示线段
@@ -195,7 +233,36 @@ var charts = (function(){
         .attr("y2", function(d) {
             return conf.h - conf.yscale(parseFloat(d.end_pt.extremum_price));
         })
-        .attr("stroke", "black");
+        .attr("stroke", "black")
+        .attr("stroke-width", 2)
+        .on("mouseover", function(d) {
+          tooltip().transition()
+            .duration(200)
+            .style("opacity", 0.9);
+          var start_dt = d.start_pt.extremum_ts.substring(0, 10);
+          var start_tm = d.start_pt.extremum_ts.substring(11, 16);
+          var end_dt = d.end_pt.extremum_ts.substring(0, 10);
+          var end_tm = d.end_pt.extremum_ts.substring(11, 16);
+          tooltip()
+            .html(
+              "开始日期：" + start_dt + "<br/>" + 
+              "开始时刻：" + start_tm + "<br/>" + 
+              "开始价格：" + d.start_pt.extremum_price + "<br/>" +
+              "结束日期：" + end_dt + "<br/>" +
+              "结束时刻：" + end_tm + "<br/>" +
+              "结束价格：" + d.end_pt.extremum_price)
+            .style("left", (d3.event.pageX + 30) + "px")
+            .style("top", (d3.event.pageY + 30) + "px");
+          // 加粗
+          d3.select(this).attr("stroke-width", 4);
+        })
+        .on("mouseout", function(d) {
+          tooltip().transition()
+            .duration(500)
+            .style("opacity", 0);
+          // 还原
+          d3.select(this).attr("stroke-width", 2);
+        });
   };
   var subtrend_draw = function(config) {
     // 是否在图中显示线段
@@ -219,12 +286,12 @@ var charts = (function(){
     while (si < stdata.length && ki < kdata.length) {
       var st = stdata[si];
       var k = kdata[ki];
-      if (!start_match && st.data.start_ts === k.ts) {
+      if (!start_match && st.start_ts === k.ts) {
         // 起点序列号
         st.start_id = ki;
         // 将start_match置为true
         start_match = true;
-      } else if (st.data.end_ts === k.ts) {
+      } else if (st.end_ts === k.ts) {
         // 终点序列号
         st.end_id = ki;
         // 仅递增线段，下一线段起点应与前一线段终点一致，需复用ki
@@ -257,23 +324,52 @@ var charts = (function(){
             return d.end_id * conf.bar_width + conf.bar_inner_width / 2;
         })
         .attr("y1", function(d) {
-            return conf.h - conf.yscale(parseFloat(d.data.start_price));
+            return conf.h - conf.yscale(parseFloat(d.start_price));
         })
         .attr("y2", function(d) {
-            return conf.h - conf.yscale(parseFloat(d.data.end_price));
+            return conf.h - conf.yscale(parseFloat(d.end_price));
         })
         .attr("stroke", function(d) {
-          return d.type === "Stroke" ? "yellow" : "purple";
+          return d.level === 1 ? "violet" : "purple";
+        })
+        .attr("stroke-width", function(d) {
+          return d.level === 1 ? 1 : 2;
+        })
+        .on("mouseover", function(d) {
+          tooltip().transition()
+            .duration(200)
+            .style("opacity", 0.9);
+          var start_dt = d.start_ts.substring(0, 10);
+          var start_tm = d.start_ts.substring(11, 16);
+          var end_dt = d.end_ts.substring(0, 10);
+          var end_tm = d.end_ts.substring(11, 16);
+          tooltip()
+            .html(
+              "开始日期：" + start_dt + "<br/>" + 
+              "开始时刻：" + start_tm + "<br/>" + 
+              "开始价格：" + d.start_price + "<br/>" +
+              "结束日期：" + end_dt + "<br/>" +
+              "结束时刻：" + end_tm + "<br/>" +
+              "结束价格：" + d.end_price)
+            .style("left", (d3.event.pageX + 30) + "px")
+            .style("top", (d3.event.pageY + 30) + "px");
+          // 加粗
+          d3.select(this).attr("stroke-width", function(d) {
+            return d.level === 1 ? 2 : 4;
+          });
+        })
+        .on("mouseout", function(d) {
+          tooltip().transition()
+            .duration(500)
+            .style("opacity", 0);
+          // 还原
+          d3.select(this).attr("stroke-width", function(d) {
+            return d.level === 1 ? 1 : 2;
+          });
         });
   };
   var kdata_draw = function() {
     var conf = kconf();
-    // 创建标题
-    if (!d3.select("#k_lines_title").empty()) {
-      d3.select("#k_lines_title").remove();
-    }
-    d3.select("#k_container").append("div").attr("id", "k_lines_title")
-      .text("K线图");
     // 创建K线图
     if (!d3.select("#k_lines").empty()) {
       // 如存在则删除
@@ -288,10 +384,6 @@ var charts = (function(){
     if (!d3.select("#k_tooltip").empty()) {
       d3.select("#k_tooltip").remove();
     }
-    var tooltip = d3.select("#k_container")
-      .append("div")
-      .attr("class", "tooltip")
-      .style("opacity", 0);
     // 画图
     svg.selectAll("rect").data(kdata).enter().append("rect")
         .attr("x", function(d, i) {
@@ -310,12 +402,12 @@ var charts = (function(){
             return "green";
         })
         .on("mouseover", function(d) {
-          tooltip.transition()
+          tooltip().transition()
             .duration(200)
             .style("opacity", 0.9);
           var dt = d.ts.substring(0, 10);
           var tm = d.ts.substring(11, 16);
-          tooltip
+          tooltip()
             .html(
               "日期：" + dt + "<br/>" + 
               "时刻：" + tm + "<br/>" +
@@ -327,7 +419,7 @@ var charts = (function(){
             .style("top", (d3.event.pageY + 30) + "px");
         })
         .on("mouseout", function(d) {
-          tooltip.transition()
+          tooltip().transition()
             .duration(500)
             .style("opacity", 0);
         });
@@ -372,8 +464,6 @@ var charts = (function(){
   var pdata_clear = function() {
     // 删除表格
     d3.select("#p_table").remove();
-    // 删除标题
-    d3.select("#p_table_title").remove();
   };
   var pdata_table = function() {
     var p_check = $("#p_check").is(":checked");
@@ -437,8 +527,6 @@ var charts = (function(){
   var skdata_clear = function() {
     // 删除表格
     d3.select("#sk_table").remove();
-    // 删除标题
-    d3.select("#sk_table_title").remove();
   };
   var skdata_table = function() {
     var sk_check = $("#sk_check").is(":checked");
@@ -508,8 +596,6 @@ var charts = (function(){
   var sgdata_clear = function() {
     // 删除表格
     d3.select("#sg_table").remove();
-    // 删除标题
-    d3.select("#sg_table_title").remove();
   };
   var sgdata_table = function() {
     var sg_check = $("#sg_check").is(":checked");
@@ -579,8 +665,6 @@ var charts = (function(){
   var stdata_clear = function() {
     // 删除表格
     d3.select("#st_table").remove();
-    // 删除标题
-    d3.select("#st_table_title").remove();
   }
   var stdata_table = function() {
     var st_check = $("#st_check").is(":checked");
@@ -617,12 +701,12 @@ var charts = (function(){
       .selectAll("td")
       .data(function(d) {
         return [
-          d.type === "Stroke" ? "笔" : "线段",
-          d.data.start_ts, 
-          d.data.start_price, 
-          d.data.end_ts, 
-          d.data.end_price, 
-          parseFloat(d.data.start_price) < parseFloat(d.data.end_price) ? "上升" : "下降"
+          d.level === 1 ? "笔" : "线段",
+          d.start_ts, 
+          d.start_price, 
+          d.end_ts, 
+          d.end_price, 
+          parseFloat(d.start_price) < parseFloat(d.end_price) ? "上升" : "下降"
         ];
       })
       .enter()
@@ -702,12 +786,8 @@ $(document).ready(function() {
     maxDate: -1
   });
   $("#data_container").tabs();
-  $("#parameter_bar").accordion({
-    collapsible: true,
-    heightStyle: "content"
-  });
   // 笔逻辑选择
-  $("#request_stroke_fieldset input[name='stroke_logic']").click(function(e){
+  $("input[name='stroke_logic_gap']").click(function(e){
     var value = $(this).val();
     if (value === "gap_ratio") {
       $("#gap_ratio_percentage_span").css("display", "inline");
@@ -716,7 +796,7 @@ $(document).ready(function() {
     }
   });
   // 柱间距选择
-  $("#display_base_fieldset input[name='bar_padding']").click(function(e){
+  $("input[name='bar_padding']").click(function(e){
     var value = $(this).val();
     if (value === "fixed") {
       $("#bar_padding_fixed_width_span").css("display", "inline");
@@ -817,17 +897,19 @@ $(document).ready(function() {
     var sk_check = $("#sk_check").is(":checked");
     var sg_check = $("#sg_check").is(":checked");
     var st_check = $("#st_check").is(":checked");
-    var stroke_logic_check = $("#request_stroke_fieldset input[name='stroke_logic']:checked").val();
+    var stroke_logic_indep_k = $("input[name='stroke_logic_indep_k']:checked").val();
+    var stroke_logic_gap = $("input[name='stroke_logic_gap']:checked").val();
     var stroke_cfg;
-    if (stroke_logic_check === "non_indep_k") {
-      stroke_cfg = "non_indep_k";
-    } else if (stroke_logic_check === "gap_opening") {
-      stroke_cfg = "gap_opening";
-    } else if (stroke_logic_check === "gap_ratio") {
-      var gap_ratio = parseFloat($("#gap_ratio_percentage").val()) / 100;
-      stroke_cfg = "gap_ratio=" + gap_ratio;
-    } else {
+    if (stroke_logic_indep_k === "indep_k") {
       stroke_cfg = "indep_k";
+    } else {
+      stroke_cfg = "indep_k:false";
+    }
+    if (stroke_logic_gap === "gap_opening") {
+      stroke_cfg += ",gap_opening";
+    } else if (stroke_logic_gap === "gap_ratio") {
+      var gap_ratio = parseFloat($("#gap_ratio_percentage").val()) / 100;
+      stroke_cfg += ",gap_ratio=" + gap_ratio;
     }
 
     $.ajax({

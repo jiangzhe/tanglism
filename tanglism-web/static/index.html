@@ -11,86 +11,79 @@
     </head>
     <body>
         <div id="search_bar" style="margin-bottom: 20px">
-            <label>股票代码：</label><input type="text" id="input_stock_code"/>
-            <label>起始日期：</label><input type="text" id="input_start_dt"/>
-            <label>结束日期：</label><input type="text" id="input_end_dt"/>
-            <label>周期：</label>
-            <select id="input_tick">
-                <option>1m</option>
-                <option>5m</option>
-                <option selected>30m</option>
-                <option>1d</option>
-            </select>
-            <input type="submit" id="stock_submission" value="提交"/>
+            <fieldset>
+                <legend>股票查询</legend>
+                <label>股票代码：</label><input type="text" id="input_stock_code"/>
+                <label>起始日期：</label><input type="text" id="input_start_dt" autocomplete="off"/>
+                <label>结束日期：</label><input type="text" id="input_end_dt" autocomplete="off"/>
+                <label>周期：</label>
+                <select id="input_tick">
+                    <option>1m</option>
+                    <option>5m</option>
+                    <option selected>30m</option>
+                    <option>1d</option>
+                </select>
+                <br/>
+                <label>形态选择：</label>
+                <input type="checkbox" id="p_check" value="parting"/>
+                <label for="p_check">分型</label>
+                <input type="checkbox" id="sk_check" value="stroke" checked/>
+                <label for="sk_check">笔</label>
+                <input type="checkbox" id="sg_check" value="segment" checked/>
+                <label for="sg_check">线段</label>
+                <input type="checkbox" id="st_check" value="subtrend"/>
+                <label for="st_check">次级别</label>
+                <br/>
+                <label>独立K线成笔：</label>
+                <input type="radio" id="indep_k_check" name="stroke_logic_indep_k" value="indep_k" checked/>
+                <label for="indep_k_check">检查独立K线</label>
+                <input type="radio" id="non_indep_k_check" name="stroke_logic_indep_k" value="non_indep_k"/>
+                <label for="non_indep_k_check">不检查独立K线</label>
+                <br/>
+                <label>缺口成笔：</label>
+                <input type="radio" id="gap_none_check" name="stroke_logic_gap" value="gap_none" checked/>
+                <label for="gap_none_check">无</label>
+                <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening"/>
+                <label for="gap_opening_check">开盘跳空缺口成笔</label>
+                <input type="radio" id="gap_ratio_check" name="stroke_logic_gap" value="gap_ratio"/>
+                <label for="gap_ratio_check">跳空缺口幅度成笔</label>    
+                <span id="gap_ratio_percentage_span" style="display:none">
+                    <input type="text" id="gap_ratio_percentage" value="1"/>
+                    <label for="gap_ratio_percentage">%</label>
+                </span>
+                <br/>
+                <input type="submit" id="stock_submission" value="提交"/>
+            </fieldset>
         </div>
+        <div id="k_container" style="margin-bottom: 50px"></div>
         <div id="parameter_bar" style="margin-bottom: 20px">
-            <h3>请求参数</h3>
-            <div>
-                <fieldset id="request_morph_fieldset">
-                    <legend>形态选择</legend>
-                    <input type="checkbox" id="p_check" value="parting"/>
-                    <label for="p_check">分型</label>
-                    <input type="checkbox" id="sk_check" value="stroke" checked/>
-                    <label for="sk_check">笔</label>
-                    <input type="checkbox" id="sg_check" value="segment" checked/>
-                    <label for="sg_check">线段</label>
-                    <input type="checkbox" id="st_check" value="subtrend"/>
-                    <label for="st_check">次级别</label>
-                </fieldset>
-                <fieldset id="request_stroke_fieldset">
-                    <legend>笔逻辑</legend>
-                    <input type="radio" id="indep_k_check" name="stroke_logic" value="indep_k" checked/>
-                    <label for="indep_k_check">检查独立K线</label>
-                    <br/>
-                    <input type="radio" id="non_indep_k_check" name="stroke_logic" value="non_indep_k"/>
-                    <label for="non_indep_k_check">不检查独立K线</label>
-                    <br/>
-                    <input type="radio" id="gap_opening_check" name="stroke_logic" value="gap_opening"/>
-                    <label for="gap_opening_check">开盘跳空缺口成笔</label>
-                    <br/>
-                    <input type="radio" id="gap_ratio_check" name="stroke_logic" value="gap_ratio"/>
-                    <label for="gap_ratio_check">跳空缺口幅度成笔</label>
-                    
-                    <span id="gap_ratio_percentage_span" style="display:none">
-                        <input type="text" id="gap_ratio_percentage" value="1"/>
-                        <label for="gap_ratio_percentage">%</label>
-                    </span>
-                    <br/>
-                </fieldset>
-            </div>
-            <h3>显示参数</h3>
-            <div>
-                <fieldset id="display_base_fieldset">
-                    <legend>基础</legend>
-                    <label>单柱宽度：</label>
-                    <input type="text" id="bar_width" name="bar_width" value="15"/>
-                    <br/>
-                    <label>柱间距：</label>
-                    <input type="radio" id="bar_padding_default" name="bar_padding" value="default" checked/>
-                    <label for="bar_padding_default">默认</label>
-                    <input type="radio" id="bar_padding_fixed" name="bar_padding" value="fixed"/>
-                    <label for="bar_padding_fixed">固定</label>
-                    <span id="bar_padding_fixed_width_span" style="display:none">
-                        <input type="text" id="bar_padding_fixed_width" value="1"/>
-                        <label for="bar_padding_fixed_width">px</label>
-                    </span>
-                    <br/>
-                    <label>K线图高度：</label>
-                    <input type="text" id="chart_height" value="400"/>
-                </fieldset>
-                <fieldset id="display_morph_fieldset">
-                    <legend>形态</legend>
-                    <input type="checkbox" id="stroke_draw" value="stroke_draw" checked/>
-                    <label for="stroke_draw">显示笔</label>
-                    <input type="checkbox" id="segment_draw" value="segment_draw" checked/>
-                    <label for="segment_draw">显示线段</label>
-                    <input type="checkbox" id="subtrend_draw" value="subtrend_draw"/>
-                    <label for="subtrend_draw">显示次级别</label>
-                    <input type="button" id="chart_refresh" value="刷新"/>
-                </fieldset>
-            </div>
+            <fieldset id="display_base_fieldset">
+                <legend>显示参数</legend>
+                <label>单柱宽度：</label>
+                <input type="text" id="bar_width" name="bar_width" value="15"/>
+                <label>柱间距：</label>
+                <input type="radio" id="bar_padding_default" name="bar_padding" value="default" checked/>
+                <label for="bar_padding_default">默认</label>
+                <input type="radio" id="bar_padding_fixed" name="bar_padding" value="fixed"/>
+                <label for="bar_padding_fixed">固定</label>
+                <span id="bar_padding_fixed_width_span" style="display:none">
+                    <input type="text" id="bar_padding_fixed_width" value="1"/>
+                </span>
+                <label>K线图高度：</label>
+                <input type="text" id="chart_height" value="400"/>
+                <br/>
+                <label>形态显示：</label>
+                <input type="checkbox" id="stroke_draw" value="stroke_draw" checked/>
+                <label for="stroke_draw">笔</label>
+                <input type="checkbox" id="segment_draw" value="segment_draw" checked/>
+                <label for="segment_draw">线段</label>
+                <input type="checkbox" id="subtrend_draw" value="subtrend_draw"/>
+                <label for="subtrend_draw">次级别</label>
+                <br/>
+                <input type="button" id="chart_refresh" value="刷新"/>
+            </fieldset>
         </div>
-        <div id="k_container" style="margin-bottom: 20px"></div>
+        
         <div id="data_container">
             <ul>
                 <li><a href="#p_container">分型</a></li>

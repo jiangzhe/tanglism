@@ -1,4 +1,4 @@
-use crate::shape::{Parting, CK, K, Gap, PriceRange};
+use crate::shape::{Gap, Parting, PriceRange, CK, K};
 use crate::Result;
 
 /// 将K线图解析为分型序列
@@ -195,9 +195,19 @@ impl<'k> PartingShaper<'k> {
             )
         };
 
-        let price_range = PriceRange{
-            start_high: k1.price_range.as_ref().map(|pr| &pr.start_high).unwrap_or(&k1.high).clone(),
-            start_low: k1.price_range.as_ref().map(|pr| &pr.start_low).unwrap_or(&k1.low).clone(),
+        let price_range = PriceRange {
+            start_high: k1
+                .price_range
+                .as_ref()
+                .map(|pr| &pr.start_high)
+                .unwrap_or(&k1.high)
+                .clone(),
+            start_low: k1
+                .price_range
+                .as_ref()
+                .map(|pr| &pr.start_low)
+                .unwrap_or(&k1.low)
+                .clone(),
             end_high: k2.high.clone(),
             end_low: k2.low.clone(),
         };
@@ -217,14 +227,14 @@ impl<'k> PartingShaper<'k> {
 fn create_parting(k1: &CK, k2: &CK, k3: &CK, top: bool) -> Parting {
     let left_gap = if top && k1.end_high() < k2.start_low() {
         // 顶分型，k1结束最高价小于k2起始最低价
-        Some(Gap{
+        Some(Gap {
             ts: k2.start_ts,
             start_price: k1.end_high().clone(),
             end_price: k2.start_low().clone(),
         })
     } else if !top && k1.end_low() > k2.start_high() {
         // 底分型，k1结束最低价大于k2起始最高价
-        Some(Gap{
+        Some(Gap {
             ts: k2.start_ts,
             start_price: k1.end_low().clone(),
             end_price: k2.start_high().clone(),
@@ -234,14 +244,14 @@ fn create_parting(k1: &CK, k2: &CK, k3: &CK, top: bool) -> Parting {
     };
     let right_gap = if top && k2.end_low() > k3.start_high() {
         // 顶分型，k2结束最低价大于k3起始最高价
-        Some(Gap{
+        Some(Gap {
             ts: k3.start_ts,
             start_price: k2.end_low().clone(),
             end_price: k3.start_high().clone(),
         })
     } else if !top && k2.end_high() < k3.start_low() {
         // 底分型，k2结束最高价小于k3起始最低价
-        Some(Gap{
+        Some(Gap {
             ts: k3.start_ts,
             start_price: k2.end_high().clone(),
             end_price: k3.start_low().clone(),
@@ -253,18 +263,13 @@ fn create_parting(k1: &CK, k2: &CK, k3: &CK, top: bool) -> Parting {
         start_ts: k1.start_ts,
         end_ts: k3.end_ts,
         extremum_ts: k2.extremum_ts,
-        extremum_price: if top {
-            k2.high.clone()
-        } else {
-            k2.low.clone()
-        },
+        extremum_price: if top { k2.high.clone() } else { k2.low.clone() },
         n: k1.n + k2.n + k3.n,
         top,
         left_gap,
         right_gap,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
