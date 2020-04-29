@@ -33,25 +33,36 @@ pub struct CK {
 }
 
 impl CK {
-
     #[inline]
     pub fn start_high(&self) -> &BigDecimal {
-        self.price_range.as_ref().map(|pr| &pr.start_high).unwrap_or(&self.high)
+        self.price_range
+            .as_ref()
+            .map(|pr| &pr.start_high)
+            .unwrap_or(&self.high)
     }
 
     #[inline]
     pub fn start_low(&self) -> &BigDecimal {
-        self.price_range.as_ref().map(|pr| &pr.start_low).unwrap_or(&self.low)
+        self.price_range
+            .as_ref()
+            .map(|pr| &pr.start_low)
+            .unwrap_or(&self.low)
     }
 
     #[inline]
     pub fn end_high(&self) -> &BigDecimal {
-        self.price_range.as_ref().map(|pr| &pr.end_high).unwrap_or(&self.high)
+        self.price_range
+            .as_ref()
+            .map(|pr| &pr.end_high)
+            .unwrap_or(&self.high)
     }
 
     #[inline]
     pub fn end_low(&self) -> &BigDecimal {
-        self.price_range.as_ref().map(|pr| &pr.end_low).unwrap_or(&self.low)
+        self.price_range
+            .as_ref()
+            .map(|pr| &pr.end_low)
+            .unwrap_or(&self.low)
     }
 }
 
@@ -137,7 +148,7 @@ pub struct Segment {
 }
 
 /// 缺口
-/// 
+///
 /// 缠论的基础概念
 /// 在该单位K线图上两相邻的K线间出现没有成交的区间（77课）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

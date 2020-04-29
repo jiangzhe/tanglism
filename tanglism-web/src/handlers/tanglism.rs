@@ -3,17 +3,19 @@ use crate::helpers::respond_json;
 use crate::{DbPool, Error, ErrorKind, Result};
 use actix_web::web::Json;
 use actix_web::{get, web};
+use bigdecimal::BigDecimal;
 use chrono::NaiveDateTime;
 use jqdata::JqdataClient;
 use serde::Serialize;
 use serde_derive::*;
-use tanglism_morph::{ks_to_pts, sks_to_sgs, StrokeJudge, StrokeBacktrack, StrokeConfig, StrokeShaper, K};
+use std::str::FromStr;
+use tanglism_morph::{
+    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K,
+};
 use tanglism_morph::{Parting, Segment, Stroke, SubTrend};
 use tanglism_utils::{
     parse_ts_from_str, LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN,
 };
-use bigdecimal::BigDecimal;
-use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -206,23 +208,25 @@ pub async fn api_get_tanglism_subtrends(
         let sgs = sks_to_sgs(&sks)?;
         // 将笔和线段整合为次级别走势
         let tick = path.tick.clone();
-        merge_subtrends(
+        trend::merge_subtrends::<_, _, crate::Error>(
             sgs,
             sks,
             |sg| {
-                Ok(SubTrend::Segment {
+                Ok(SubTrend {
                     start_ts: align_tick(&tick, sg.start_pt.extremum_ts)?,
                     start_price: sg.start_pt.extremum_price.clone(),
                     end_ts: align_tick(&tick, sg.end_pt.extremum_ts)?,
                     end_price: sg.end_pt.extremum_price.clone(),
+                    level: 2,
                 })
             },
             |sk| {
-                Ok(SubTrend::Stroke {
+                Ok(SubTrend {
                     start_ts: align_tick(&tick, sk.start_pt.extremum_ts)?,
                     start_price: sk.start_pt.extremum_price.clone(),
                     end_ts: align_tick(&tick, sk.end_pt.extremum_ts)?,
                     end_price: sk.end_pt.extremum_price.clone(),
+                    level: 1,
                 })
             },
         )?
@@ -266,44 +270,6 @@ where
     })
 }
 
-fn merge_subtrends<G, K>(
-    sgs: Vec<Segment>,
-    sks: Vec<Stroke>,
-    sg_fn: G,
-    sk_fn: K,
-) -> Result<Vec<SubTrend>>
-where
-    G: Fn(&Segment) -> Result<SubTrend>,
-    K: Fn(&Stroke) -> Result<SubTrend>,
-{
-    let mut subtrends = Vec::new();
-    let mut sgi = 0;
-    let mut ski = 0;
-    while sgi < sgs.len() {
-        let sg = &sgs[sgi];
-        // 将线段前的笔加入次级别走势
-        while ski < sks.len() && sks[ski].start_pt.extremum_ts < sg.start_pt.extremum_ts {
-            let sk = &sks[ski];
-            subtrends.push(sk_fn(sk)?);
-            ski += 1;
-        }
-        // 将线段加入次级别走势
-        subtrends.push(sg_fn(sg)?);
-        sgi += 1;
-        // 跳过所有被线段覆盖的笔
-        while ski < sks.len() && sks[ski].start_pt.extremum_ts < sg.end_pt.extremum_ts {
-            ski += 1;
-        }
-    }
-    // 将线段后的所有笔加入次级别走势
-    while ski < sks.len() {
-        let sk = &sks[ski];
-        subtrends.push(sk_fn(sk)?);
-        ski += 1;
-    }
-    Ok(subtrends)
-}
-
 #[inline]
 fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
     use tanglism_utils::TradingTimestamps;
@@ -327,45 +293,51 @@ fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
     })
 }
 
-
 fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
     let cfg_strs: Vec<&str> = s.split(',').collect();
-    let mut judge = StrokeJudge::IndepK;
+    let mut indep_k = true;
+    let mut judge = StrokeJudge::None;
     let mut backtrack = StrokeBacktrack::None;
     for c in &cfg_strs {
-        if *c == "indep_k" {
-            judge = StrokeJudge::IndepK;
-        } else if *c == "non_indep_k" {
-            judge = StrokeJudge::NonIndepK;
+        if c.starts_with("indep_k") {
+            let is: Vec<&str> = c.split(":").collect();
+            if is.len() == 2 && is[1] == "false" {
+                indep_k = false;
+            }
         } else if c.starts_with("gap_opening") {
-            let gs: Vec<&str> = c.split('=').collect();
+            let gs: Vec<&str> = c.split(':').collect();
             if gs.len() < 2 || gs[1] == "morning" {
                 judge = StrokeJudge::GapOpening(false);
             } else {
                 judge = StrokeJudge::GapOpening(true);
             }
         } else if c.starts_with("gap_ratio") {
-            let gs: Vec<&str> = c.split('=').collect();
+            let gs: Vec<&str> = c.split(':').collect();
             if gs.len() < 2 {
                 judge = StrokeJudge::GapRatio(BigDecimal::from_str("0.01").unwrap());
             } else {
-                let ratio = BigDecimal::from_str(gs[1])
-                    .map_err(|_| Error::custom(ErrorKind::BadRequest, format!("invalid gap ratio: {}", gs[1])))?;
+                let ratio = BigDecimal::from_str(gs[1]).map_err(|_| {
+                    Error::custom(
+                        ErrorKind::BadRequest,
+                        format!("invalid gap ratio: {}", gs[1]),
+                    )
+                })?;
                 judge = StrokeJudge::GapRatio(ratio);
             }
         } else if c.starts_with("backtrack") {
-            let bs: Vec<&str> = c.split("=").collect();
+            let bs: Vec<&str> = c.split(":").collect();
             if bs.len() < 2 {
                 backtrack = StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap());
             } else {
-                let diff = BigDecimal::from_str(bs[1])
-                    .map_err(|_| Error::custom(ErrorKind::BadRequest, format!("invalid backtrack diff ratio: {}", bs[1])))?;
+                let diff = BigDecimal::from_str(bs[1]).map_err(|_| {
+                    Error::custom(
+                        ErrorKind::BadRequest,
+                        format!("invalid backtrack diff ratio: {}", bs[1]),
+                    )
+                })?;
                 backtrack = StrokeBacktrack::Diff(diff);
             }
         }
     }
-    Ok(StrokeConfig{
-        judge,
-        backtrack,
-    })
+    Ok(StrokeConfig { indep_k, judge, backtrack })
 }
