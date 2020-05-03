@@ -10,9 +10,9 @@ use serde::Serialize;
 use serde_derive::*;
 use std::str::FromStr;
 use tanglism_morph::{
-    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K,
+    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K, centers
 };
-use tanglism_morph::{Parting, Segment, Stroke, SubTrend};
+use tanglism_morph::{Parting, Segment, Stroke, SubTrend, Center};
 use tanglism_utils::{
     parse_ts_from_str, LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN,
 };
@@ -141,15 +141,17 @@ pub async fn api_get_tanglism_segments(
     .await
 }
 
-#[get("/tanglism/subtrends/{code}/ticks/{tick}")]
-pub async fn api_get_tanglism_subtrends(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<ticks::Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<Vec<SubTrend>>>> {
+async fn get_tanglism_subtrends(
+    pool: &DbPool,
+    jq: &JqdataClient,
+    tick: &str,
+    code: &str,
+    start_ts: NaiveDateTime,
+    end_ts: NaiveDateTime,
+    stroke_cfg: StrokeConfig,
+) -> Result<Vec<SubTrend>> {
     // 取次级别tick
-    let subtick = match path.tick.as_ref() {
+    let subtick = match tick {
         "1d" => "30m",
         "30m" => "5m",
         "5m" => "1m",
@@ -162,19 +164,11 @@ pub async fn api_get_tanglism_subtrends(
         _ => {
             return Err(Error::custom(
                 ErrorKind::BadRequest,
-                format!("invalid tick: {}", &path.tick),
+                format!("invalid tick: {}", tick),
             ))
         }
     };
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
-        }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    let prices = get_stock_tick_prices(&pool, &jq, subtick, &path.code, start_ts, end_ts).await?;
+    let prices = get_stock_tick_prices(&pool, &jq, subtick, code, start_ts, end_ts).await?;
     let data = {
         // 获取K线
         let ks: Vec<K> = prices
@@ -187,50 +181,99 @@ pub async fn api_get_tanglism_subtrends(
             .collect();
         // 获取分型
         let pts = ks_to_pts(&ks)?;
-        // 增加成笔逻辑判断
-        let cfg = match param.stroke_cfg {
-            None => StrokeConfig::default(),
-            Some(ref s) => parse_stroke_cfg(s)?,
-        };
         let sks = match subtick {
-            "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, cfg).run()?,
-            "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, cfg).run()?,
-            "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, cfg).run()?,
-            "1d" => StrokeShaper::new(&pts, &**LOCAL_DATES, cfg).run()?,
+            "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, stroke_cfg).run()?,
+            "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, stroke_cfg).run()?,
+            "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, stroke_cfg).run()?,
+            "1d" => StrokeShaper::new(&pts, &**LOCAL_DATES, stroke_cfg).run()?,
             _ => {
                 return Err(Error::custom(
                     ErrorKind::BadRequest,
-                    format!("invalid tick: {}", &path.tick),
+                    format!("invalid tick: {}", subtick),
                 ))
             }
         };
         // 获取线段
         let sgs = sks_to_sgs(&sks)?;
         // 将笔和线段整合为次级别走势
-        let tick = path.tick.clone();
         trend::merge_subtrends::<_, _, crate::Error>(
             sgs,
             sks,
             |sg| {
                 Ok(SubTrend {
-                    start_ts: align_tick(&tick, sg.start_pt.extremum_ts)?,
+                    start_ts: align_tick(tick, sg.start_pt.extremum_ts)?,
                     start_price: sg.start_pt.extremum_price.clone(),
-                    end_ts: align_tick(&tick, sg.end_pt.extremum_ts)?,
+                    end_ts: align_tick(tick, sg.end_pt.extremum_ts)?,
                     end_price: sg.end_pt.extremum_price.clone(),
                     level: 2,
                 })
             },
             |sk| {
                 Ok(SubTrend {
-                    start_ts: align_tick(&tick, sk.start_pt.extremum_ts)?,
+                    start_ts: align_tick(tick, sk.start_pt.extremum_ts)?,
                     start_price: sk.start_pt.extremum_price.clone(),
-                    end_ts: align_tick(&tick, sk.end_pt.extremum_ts)?,
+                    end_ts: align_tick(tick, sk.end_pt.extremum_ts)?,
                     end_price: sk.end_pt.extremum_price.clone(),
                     level: 1,
                 })
             },
         )?
     };
+    Ok(data)
+}
+
+#[get("/tanglism/subtrends/{code}/ticks/{tick}")]
+pub async fn api_get_tanglism_subtrends(
+    pool: web::Data<DbPool>,
+    jq: web::Data<JqdataClient>,
+    path: web::Path<ticks::Path>,
+    param: web::Query<Param>,
+) -> Result<Json<Response<Vec<SubTrend>>>> {
+    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
+    let end_ts = match param.end_dt {
+        Some(ref s) => {
+            let (et, _) = parse_ts_from_str(s)?;
+            et
+        }
+        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
+    };
+    // 增加成笔逻辑判断
+    let stroke_cfg = match param.stroke_cfg {
+        None => StrokeConfig::default(),
+        Some(ref s) => parse_stroke_cfg(s)?,
+    };
+    let data = get_tanglism_subtrends(&pool, &jq, path.tick.as_ref(), path.code.as_ref(), start_ts, end_ts, stroke_cfg).await?;
+    respond_json(Response {
+        code: path.code.to_owned(),
+        tick: path.tick.to_owned(),
+        start_ts,
+        end_ts,
+        data,
+    })
+}
+
+#[get("/tanglism/centers/{code}/ticks/{tick}")]
+pub async fn api_get_tanglism_centers(
+    pool: web::Data<DbPool>,
+    jq: web::Data<JqdataClient>,
+    path: web::Path<ticks::Path>,
+    param: web::Query<Param>,
+) -> Result<Json<Response<Vec<Center>>>> {
+    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
+    let end_ts = match param.end_dt {
+        Some(ref s) => {
+            let (et, _) = parse_ts_from_str(s)?;
+            et
+        }
+        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
+    };
+    // 增加成笔逻辑判断
+    let stroke_cfg = match param.stroke_cfg {
+        None => StrokeConfig::default(),
+        Some(ref s) => parse_stroke_cfg(s)?,
+    };
+    let subtrends = get_tanglism_subtrends(&pool, &jq, path.tick.as_ref(), path.code.as_ref(), start_ts, end_ts, stroke_cfg).await?;
+    let data = centers(&subtrends, 2);
     respond_json(Response {
         code: path.code.to_owned(),
         tick: path.tick.to_owned(),
