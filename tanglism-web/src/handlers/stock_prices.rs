@@ -12,6 +12,9 @@ use log::{debug, warn};
 use serde_derive::*;
 use std::sync::Arc;
 use tanglism_utils::{parse_ts_from_str, TradingDates, LOCAL_DATES};
+use lazy_static::*;
+use tokio::sync::Mutex;
+use std::collections::HashMap;
 
 // 批量插入操作的数量限制，受限于SQL的变量绑定<=65535
 const MAX_DB_INSERT_BATCH_SIZE: i64 = 5000;
@@ -50,6 +53,25 @@ pub async fn api_get_stock_tick_prices(
     })
 }
 
+// 对于价格的查询和插入，使用互斥锁
+lazy_static! {
+    static ref PRICE_ACCESS: Arc<Mutex<PriceTickAccess>> = Arc::new(Mutex::new(PriceTickAccess::new()));
+}
+
+struct PriceTickAccess(HashMap<String, Arc<Mutex<()>>>);
+
+impl PriceTickAccess {
+    fn new() -> Self {
+        PriceTickAccess(HashMap::new())
+    }
+
+    fn get(&mut self, tick: &str, code: &str) -> Arc<Mutex<()>> {
+        let key = format!("{}/{}", tick, code);
+        let value = self.0.entry(key).or_insert_with(|| Arc::new(Mutex::new(())));
+        Arc::clone(value)
+    }
+}
+
 pub async fn get_stock_tick_prices(
     pool: &DbPool,
     jq: &JqdataClient,
@@ -82,6 +104,15 @@ pub async fn get_stock_tick_prices(
     }
 
     let code = Arc::new(code.to_owned());
+
+    // 禁止多线程同时读写price表
+    let pa = {
+        let mut pas = PRICE_ACCESS.lock().await;
+        pas.get(&tick, &code)
+    };
+    let _pa_access = pa.lock().await;
+    
+    // 检查已抓取的数据区间
     let period = {
         let code = Arc::clone(&code);
         let tick = Arc::clone(&tick);
