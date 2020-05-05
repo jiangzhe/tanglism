@@ -10,8 +10,8 @@ export const segment = {
     outdate
 }
 
-import { kline } from './tanglism-kline.js';
-import { tooltip, ajax_params } from './tanglism-common.js';
+import { kline, tooltip } from './tanglism-kline.js';
+import { ajax_params } from './tanglism-common.js';
 
 const _data = [];
 var _outdate = true;

@@ -1,4 +1,5 @@
 pub mod health;
+pub mod metrics;
 pub mod stock_prices;
 pub mod stocks;
 pub mod tanglism;

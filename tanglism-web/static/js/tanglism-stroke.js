@@ -9,8 +9,8 @@ export const stroke = {
     outdate
 };
 
-import { kline } from './tanglism-kline.js';
-import { tooltip, ajax_params } from './tanglism-common.js';
+import { kline, tooltip } from './tanglism-kline.js';
+import { ajax_params } from './tanglism-common.js';
 
 // 笔数据
 const _data = [];

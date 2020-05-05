@@ -125,7 +125,7 @@ where
 }
 
 /// 从次级别走势的序列中组合出本级别中枢
-/// 
+///
 /// 仅需要考虑与前一个中枢的位置关系
 pub fn centers(subtrends: &[SubTrend], base_level: i32) -> Vec<Center> {
     if subtrends.len() < 3 {
@@ -186,7 +186,6 @@ pub fn centers(subtrends: &[SubTrend], base_level: i32) -> Vec<Center> {
     cs
 }
 
-
 fn center3(s1: &SubTrend, s2: &SubTrend, s3: &SubTrend, base_level: i32) -> Option<Center> {
     if s1.level == base_level && s2.level == base_level && s3.level == base_level {
         return center2(s1, s3);
@@ -226,32 +225,38 @@ fn center2(s1: &SubTrend, s3: &SubTrend) -> Option<Center> {
         high,
         extension: None,
         level: s1.level + 1,
-        unfolded_range: abs_diff(&s1.start_price, &s1.end_price) + abs_diff(&s1.end_price, &s3.start_price) + abs_diff(&s3.start_price, &s3.end_price),
+        unfolded_range: abs_diff(&s1.start_price, &s1.end_price)
+            + abs_diff(&s1.end_price, &s3.start_price)
+            + abs_diff(&s3.start_price, &s3.end_price),
         upward: s1.end_price > s1.start_price,
     })
 }
 
 #[inline]
 fn abs_diff(d1: &BigDecimal, d2: &BigDecimal) -> BigDecimal {
-    if d1 > d2 { d1 - d2 } else { d2 - d1 }
+    if d1 > d2 {
+        d1 - d2
+    } else {
+        d2 - d1
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDateTime;
     use bigdecimal::BigDecimal;
+    use chrono::NaiveDateTime;
 
     #[test]
     fn test_center2_single() {
-        let s1 = SubTrend{
+        let s1 = SubTrend {
             start_ts: new_ts("2020-02-10 15:00"),
             start_price: BigDecimal::from(10),
             end_ts: new_ts("2020-02-11 15:00"),
             end_price: BigDecimal::from(11),
             level: 1,
         };
-        let s3 = SubTrend{
+        let s3 = SubTrend {
             start_ts: new_ts("2020-02-12 15:00"),
             start_price: BigDecimal::from(10.5),
             end_ts: new_ts("2020-02-13 15:00"),
@@ -272,14 +277,14 @@ mod tests {
 
     #[test]
     fn test_center2_narrow() {
-        let s1 = SubTrend{
+        let s1 = SubTrend {
             start_ts: new_ts("2020-02-10 15:00"),
             start_price: BigDecimal::from(15),
             end_ts: new_ts("2020-02-11 15:00"),
             end_price: BigDecimal::from(15.5),
             level: 1,
         };
-        let s3 = SubTrend{
+        let s3 = SubTrend {
             start_ts: new_ts("2020-02-12 15:00"),
             start_price: BigDecimal::from(14.5),
             end_ts: new_ts("2020-02-13 15:00"),
@@ -298,17 +303,16 @@ mod tests {
         assert_eq!(2, c.level);
     }
 
-
     #[test]
     fn test_center2_none() {
-        let s1 = SubTrend{
+        let s1 = SubTrend {
             start_ts: new_ts("2020-02-10 15:00"),
             start_price: BigDecimal::from(10),
             end_ts: new_ts("2020-02-11 15:00"),
             end_price: BigDecimal::from(10.2),
             level: 1,
         };
-        let s3 = SubTrend{
+        let s3 = SubTrend {
             start_ts: new_ts("2020-02-12 15:00"),
             start_price: BigDecimal::from(9.5),
             end_ts: new_ts("2020-02-13 15:00"),
@@ -321,21 +325,21 @@ mod tests {
     #[test]
     fn test_centers_single() {
         let sts = vec![
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-10 15:00"),
                 start_price: BigDecimal::from(10),
                 end_ts: new_ts("2020-02-11 15:00"),
                 end_price: BigDecimal::from(11),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-11 15:00"),
                 start_price: BigDecimal::from(11),
                 end_ts: new_ts("2020-02-12 15:00"),
                 end_price: BigDecimal::from(10.5),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-12 15:00"),
                 start_price: BigDecimal::from(10.5),
                 end_ts: new_ts("2020-02-13 15:00"),
@@ -353,49 +357,49 @@ mod tests {
     #[test]
     fn test_centers_double() {
         let sts = vec![
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-10 15:00"),
                 start_price: BigDecimal::from(10),
                 end_ts: new_ts("2020-02-11 15:00"),
                 end_price: BigDecimal::from(11),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-11 15:00"),
                 start_price: BigDecimal::from(11),
                 end_ts: new_ts("2020-02-12 15:00"),
                 end_price: BigDecimal::from(10.5),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-12 15:00"),
                 start_price: BigDecimal::from(10.5),
                 end_ts: new_ts("2020-02-13 15:00"),
                 end_price: BigDecimal::from(11.5),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-13 15:00"),
                 start_price: BigDecimal::from(11.5),
                 end_ts: new_ts("2020-02-18 15:00"),
                 end_price: BigDecimal::from(8),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-18 15:00"),
                 start_price: BigDecimal::from(8),
                 end_ts: new_ts("2020-02-19 15:00"),
                 end_price: BigDecimal::from(8.5),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-19 15:00"),
                 start_price: BigDecimal::from(8.5),
                 end_ts: new_ts("2020-02-20 15:00"),
                 end_price: BigDecimal::from(8.2),
                 level: 1,
             },
-            SubTrend{
+            SubTrend {
                 start_ts: new_ts("2020-02-20 15:00"),
                 start_price: BigDecimal::from(8.2),
                 end_ts: new_ts("2020-02-21 15:00"),

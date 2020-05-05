@@ -21,7 +21,7 @@ pub struct Param {
 
 pub type Response = super::Response<StockPrice>;
 
-#[derive(Debug, Serialize, Deserialize, Queryable)]
+#[derive(Debug, Serialize, Deserialize, Queryable, Clone)]
 pub struct StockPrice {
     pub ts: NaiveDateTime,
     pub open: BigDecimal,
