@@ -4,6 +4,7 @@ import { stroke } from './tanglism-stroke.js';
 import { segment } from './tanglism-segment.js';
 import { subtrend } from './tanglism-subtrend.js';
 import { center } from './tanglism-center.js';
+import { metric } from './tanglism-metric.js';
 
 $(document).ready(function() {
   // 将各形态函数注册到K线回调上
@@ -11,11 +12,13 @@ $(document).ready(function() {
   kline.add_draw_callback(segment.draw);
   kline.add_draw_callback(subtrend.draw);
   kline.add_draw_callback(center.draw);
+  kline.add_draw_callback(metric.draw);
   // 将各形态数据过期关联到K线数据回调
   kline.add_data_callback(stroke.outdate);
   kline.add_data_callback(segment.outdate);
   kline.add_data_callback(subtrend.outdate);
   kline.add_data_callback(center.outdate);
+  kline.add_data_callback(metric.outdate);
   // 股票选择
   $("#input_stock_code").autocomplete({
     source: function(req, callback) {
@@ -78,6 +81,7 @@ $(document).ready(function() {
   $(".draw_trigger").change(function() {
     if (validate_ajax_params()) {
       kline.draw();
+      metric.draw();
     }
   })
 });

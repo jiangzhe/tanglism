@@ -13,5 +13,10 @@ div.tooltip {
     border: 1px;
     border-color: black;
     pointer-events: none;
-    background-color: white;
+    background-color: ghostwhite;
+}
+
+body {
+    background-color: ghostwhite;
+    color: black;
 }

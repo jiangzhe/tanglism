@@ -10,7 +10,7 @@ export const center = {
 };
 
 import { kline } from './tanglism-kline.js';
-import { tooltip, ajax_params } from './tanglism-common.js';
+import { ajax_params } from './tanglism-common.js';
 
 const _data = [];
 var _outdate = true;

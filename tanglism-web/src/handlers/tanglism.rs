@@ -10,9 +10,10 @@ use serde::Serialize;
 use serde_derive::*;
 use std::str::FromStr;
 use tanglism_morph::{
-    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K, centers
+    centers, ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge,
+    StrokeShaper, K,
 };
-use tanglism_morph::{Parting, Segment, Stroke, SubTrend, Center};
+use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend};
 use tanglism_utils::{
     parse_ts_from_str, LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN,
 };
@@ -242,7 +243,16 @@ pub async fn api_get_tanglism_subtrends(
         None => StrokeConfig::default(),
         Some(ref s) => parse_stroke_cfg(s)?,
     };
-    let data = get_tanglism_subtrends(&pool, &jq, path.tick.as_ref(), path.code.as_ref(), start_ts, end_ts, stroke_cfg).await?;
+    let data = get_tanglism_subtrends(
+        &pool,
+        &jq,
+        path.tick.as_ref(),
+        path.code.as_ref(),
+        start_ts,
+        end_ts,
+        stroke_cfg,
+    )
+    .await?;
     respond_json(Response {
         code: path.code.to_owned(),
         tick: path.tick.to_owned(),
@@ -272,7 +282,16 @@ pub async fn api_get_tanglism_centers(
         None => StrokeConfig::default(),
         Some(ref s) => parse_stroke_cfg(s)?,
     };
-    let subtrends = get_tanglism_subtrends(&pool, &jq, path.tick.as_ref(), path.code.as_ref(), start_ts, end_ts, stroke_cfg).await?;
+    let subtrends = get_tanglism_subtrends(
+        &pool,
+        &jq,
+        path.tick.as_ref(),
+        path.code.as_ref(),
+        start_ts,
+        end_ts,
+        stroke_cfg,
+    )
+    .await?;
     let data = centers(&subtrends, 2);
     respond_json(Response {
         code: path.code.to_owned(),
@@ -382,5 +401,9 @@ fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
             }
         }
     }
-    Ok(StrokeConfig { indep_k, judge, backtrack })
+    Ok(StrokeConfig {
+        indep_k,
+        judge,
+        backtrack,
+    })
 }

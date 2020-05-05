@@ -1,8 +1,6 @@
 // 定义K线相关函数
 // 依赖jquery, jquery-ui, d3, tanglism-common
 
-import { tooltip } from './tanglism-common.js';
-
 export const kline = {
     data,
     conf,
@@ -19,6 +17,18 @@ const _data = [];
 const draw_callbacks = [];
 // 数据回调
 const data_callbacks = [];
+
+// 获取提示框，若不存在则创建
+export function tooltip() {
+  var t = d3.select("#k_container div.tooltip");
+  if (!t.empty()) {
+    return t;
+  }
+  return d3.select("#k_container")
+    .append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+}
 
 // k线基础配置
 function conf() {
@@ -38,23 +48,21 @@ function conf() {
     // 整体高度
     var h = parseInt($("#chart_height").val());
     // 价格最大值
-    var price_max = d3.max(kline.data(), function(d) {
+    var max_value = d3.max(kline.data(), function(d) {
       return d.high;
     });
     // 价格最小值
-    var price_min = d3.min(kline.data(), function(d) {
+    var min_value = d3.min(kline.data(), function(d) {
         return d.low;
     });
     // 缩放比例
-    var yscale = d3.scaleLinear([price_min, price_max], [0, h]);
+    var yscale = d3.scaleLinear([min_value, max_value], [0, h]);
     return {
       bar_width,
       bar_padding,
       bar_inner_width,
       w,
       h,
-      price_max,
-      price_min,
       yscale
     };
 };
@@ -84,10 +92,6 @@ function draw() {
       .attr("id", "k_lines")
       .attr("width", conf.w)
       .attr("height", conf.h);
-    // 创建单例提示
-    if (!d3.select("#k_tooltip").empty()) {
-      d3.select("#k_tooltip").remove();
-    }
     // 画图
     svg.selectAll("rect").data(kline.data()).enter().append("rect")
         .attr("x", function(d, i) {
