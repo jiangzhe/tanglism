@@ -124,6 +124,37 @@ where
     Ok(subtrends)
 }
 
+struct CenterArray {
+    cs: Vec<Center>,
+    end_idx: usize,
+}
+
+impl CenterArray {
+    fn new() -> Self {
+        CenterArray{
+            cs: Vec::new(),
+            end_idx: 0,
+        }
+    }
+
+    // 保证中枢和索引同时更新
+    fn add_last(&mut self, end_idx: usize, c: Center) {
+        self.end_idx = end_idx;
+        self.cs.push(c);
+    }
+
+    fn last(&self) -> Option<&Center> {
+        self.cs.last()
+    }
+
+    fn modify_last<F>(&mut self, end_idx: usize, f: F) where F: Fn(&mut Center) {
+        self.end_idx = end_idx;
+        if let Some(last) = self.cs.last_mut() {
+            f(last);
+        }
+    }
+}
+
 /// 从次级别走势的序列中组合出本级别中枢
 ///
 /// 仅需要考虑与前一个中枢的位置关系
@@ -131,59 +162,60 @@ pub fn centers(subtrends: &[SubTrend], base_level: i32) -> Vec<Center> {
     if subtrends.len() < 3 {
         return Vec::new();
     }
-    let mut cs = Vec::new();
+    let mut ca = CenterArray::new();
     let mut s1 = &subtrends[0];
     let mut s2 = &subtrends[1];
     let mut s3 = &subtrends[2];
-    let mut end_idx = 0;
     if let Some(c) = center3(s1, s2, s3, base_level) {
-        cs.push(c);
+        ca.add_last(2, c);
         s1 = s2;
         s2 = s3;
-        end_idx = 2;
     }
     for (i, s) in subtrends.iter().enumerate().skip(3) {
         s3 = s;
-        if let Some(lc) = cs.last() {
+        if let Some(lc) = ca.last() {
             // 存在前一个中枢
-            if i - end_idx >= 3 {
+            if i - ca.end_idx >= 3 {
                 // 当前走势与前中枢差距3段或以上时，可能形成新中枢
                 if let Some(cc) = center3(s1, s2, s3, base_level) {
                     if s3.start_price > lc.shared_high {
                         // 上升时，中枢由下上下构成
                         if !cc.upward {
-                            cs.push(cc);
-                            end_idx = i;
+                            ca.add_last(i, cc);
                         }
                     } else if s3.start_price < lc.shared_low {
                         // 下降时，中枢由上下上构成
                         if cc.upward {
-                            cs.push(cc);
-                            end_idx = i;
+                            ca.add_last(i, cc);
                         }
                     }
                 }
             } else {
-                // 检查当前中枢是否扩展
+                // 检查当前中枢是否延伸
                 // 使用中枢区间，而不是中枢的最高最低点
-                if s3.end_price >= lc.shared_low && s3.end_price <= lc.shared_high {
-                    let mut lc = cs.last_mut().unwrap();
-                    lc.end_ts = s3.end_ts;
-                    lc.end_price = s3.end_price.clone();
-                    end_idx = i;
+                // 1. 当前走势的终点落在中枢区间内
+                // 2. 当前走势跨越整个中枢区间，即最高点高于中枢区间，最低点低于中枢区间
+                let (s3_min, s3_max) = s3.sorted();
+                if (s3.end_price >= lc.shared_low && s3.end_price <= lc.shared_high) 
+                    || (s3_min <= &lc.shared_low && s3_max >= &lc.shared_high) 
+                {
+                    ca.modify_last(i, |lc| {
+                        lc.end_ts = s3.end_ts;
+                        lc.end_price = s3.end_price.clone();
+                    })
                 }
             }
         } else {
             // 不存在前一个中枢
             if let Some(cc) = center3(s1, s2, s3, base_level) {
                 // 将可形成的中枢添加进结果集
-                cs.push(cc);
+                ca.add_last(i, cc);
             }
         }
         s1 = s2;
         s2 = s3;
     }
-    cs
+    ca.cs
 }
 
 fn center3(s1: &SubTrend, s2: &SubTrend, s3: &SubTrend, base_level: i32) -> Option<Center> {
@@ -417,6 +449,44 @@ mod tests {
         assert_eq!(BigDecimal::from(8.5), cs[1].shared_high);
         assert_eq!(BigDecimal::from(8.0), cs[1].low);
         assert_eq!(BigDecimal::from(9.5), cs[1].high);
+    }
+
+    #[test]
+    fn test_centers_extension() {
+        let sts = vec![
+            SubTrend {
+                start_ts: new_ts("2020-02-10 15:00"),
+                start_price: BigDecimal::from(10),
+                end_ts: new_ts("2020-02-11 15:00"),
+                end_price: BigDecimal::from(11),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-11 15:00"),
+                start_price: BigDecimal::from(11),
+                end_ts: new_ts("2020-02-12 15:00"),
+                end_price: BigDecimal::from(10.5),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-12 15:00"),
+                start_price: BigDecimal::from(10.5),
+                end_ts: new_ts("2020-02-13 15:00"),
+                end_price: BigDecimal::from(11.5),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-13 15:00"),
+                start_price: BigDecimal::from(11.5),
+                end_ts: new_ts("2020-02-18 15:00"),
+                end_price: BigDecimal::from(8),
+                level: 1,
+            },
+        ];
+        let cs = centers(&sts, 1);
+        assert_eq!(1, cs.len());
+        assert_eq!(new_ts("2020-02-10 15:00"), cs[0].start_ts);
+        assert_eq!(new_ts("2020-02-18 15:00"), cs[0].end_ts);
     }
 
     fn new_ts(s: &str) -> NaiveDateTime {
