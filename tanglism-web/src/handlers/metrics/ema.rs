@@ -69,10 +69,14 @@ where
     let dea = approximate_ema(&dif, p_dea, |m| m.value.clone(), |m| m.ts);
 
     let two = BigDecimal::from(2);
-    let macd: Vec<Metric> = dif.iter().zip(dea.iter()).map(|(m1, m2)| Metric{
-        ts: m1.ts,
-        value: (&m1.value - &m2.value) * &two,
-    }).collect();
+    let macd: Vec<Metric> = dif
+        .iter()
+        .zip(dea.iter())
+        .map(|(m1, m2)| Metric {
+            ts: m1.ts,
+            value: (&m1.value - &m2.value) * &two,
+        })
+        .collect();
 
     (dif, dea, macd)
 }
