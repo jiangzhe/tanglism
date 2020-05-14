@@ -7,7 +7,7 @@ use actix_web::web::Json;
 use actix_web::{get, web};
 use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, NaiveDateTime};
-use ema::{approximate_macd, approximate_ema};
+use ema::{approximate_ema, approximate_macd};
 use jqdata::JqdataClient;
 use serde_derive::*;
 use tanglism_utils::{parse_ts_from_str, TradingDates, LOCAL_DATES};
