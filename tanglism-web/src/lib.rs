@@ -3,26 +3,36 @@ extern crate diesel;
 
 mod errors;
 mod handlers;
-mod helpers;
 pub mod models;
 mod routes;
 pub mod schema;
+mod ws;
 
-use crate::routes::routes;
-use actix_cors::Cors;
-use actix_session::CookieSession;
-use actix_web::{middleware, App, HttpServer};
+use chrono::NaiveDateTime;
 use diesel::pg::PgConnection;
 use diesel::r2d2::{self, ConnectionManager};
 use jqdata::JqdataClient;
+use serde_derive::*;
 use std::time::Duration;
+use warp::http::Uri;
+use warp::Filter;
 
 pub use errors::{Error, ErrorKind};
 pub type Result<T> = std::result::Result<T, Error>;
 // use r2d2 to manage Postgres connections
 type DbPool = r2d2::Pool<ConnectionManager<PgConnection>>;
 
-pub async fn server(host: &str, port: u32, dburl: &str, jqaccount: &str) -> Result<()> {
+// 股票基础配置
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct BasicCfg {
+    tick: String,
+    code: String,
+    start_ts: NaiveDateTime,
+    end_ts: NaiveDateTime,
+}
+
+pub async fn server(host: &str, port: u16, dburl: &str, jqaccount: &str) -> Result<()> {
+    let host: std::net::IpAddr = host.parse().expect("host must be string of IPv4");
     let manager = ConnectionManager::<PgConnection>::new(dburl);
     let pool = r2d2::Pool::builder()
         .connection_timeout(Duration::from_secs(3))
@@ -31,17 +41,23 @@ pub async fn server(host: &str, port: u32, dburl: &str, jqaccount: &str) -> Resu
     let (jqmob, jqpwd) = parse_jqaccount(jqaccount)?;
     let jq = JqdataClient::with_credential(jqmob, jqpwd).await?;
 
-    let svr = HttpServer::new(move || {
-        App::new()
-            .data(pool.clone())
-            .data(jq.clone())
-            .wrap(Cors::new().supports_credentials().finish())
-            .wrap(CookieSession::signed(&[0; 32]).secure(false))
-            .wrap(middleware::Logger::default())
-            .configure(routes)
-    })
-    .bind(format!("{}:{}", host, port))?;
-    svr.run().await?;
+    // 主页重定向
+    let index = warp::get()
+        .and(warp::path::end())
+        .map(|| warp::redirect(Uri::from_static("/static/index.html")));
+    // websocket
+    let ws_filter = ws::ws_filter(jq, pool.clone());
+
+    // API路由
+    let apis = routes::api_route(pool);
+
+    // 静态资源文件
+    let files = warp::get()
+        .and(warp::path("static"))
+        .and(warp::fs::dir("./static/"));
+
+    let routes = index.or(ws_filter).or(apis).or(files);
+    warp::serve(routes).run((host, port)).await;
     Ok(())
 }
 

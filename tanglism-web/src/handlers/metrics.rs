@@ -1,16 +1,14 @@
 mod ema;
 
 use super::stock_prices::get_stock_tick_prices;
-use crate::helpers::respond_json;
+use crate::BasicCfg;
 use crate::{DbPool, Error, ErrorKind, Result};
-use actix_web::web::Json;
-use actix_web::{get, web};
 use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, NaiveDateTime};
-use ema::{approximate_ema, approximate_macd};
+use ema::approximate_macd;
 use jqdata::JqdataClient;
 use serde_derive::*;
-use tanglism_utils::{parse_ts_from_str, TradingDates, LOCAL_DATES};
+use tanglism_utils::{TradingDates, LOCAL_DATES};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -50,81 +48,45 @@ pub struct MacdMetric {
     pub macd: Vec<Metric>,
 }
 
-#[get("/metrics/ema/{code}/ticks/{tick}")]
-pub async fn api_get_metrics_ema(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<Vec<Metric>>>> {
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
-        }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    let ema_period = param
-        .metrics_cfg
-        .as_ref()
-        .and_then(|mc| parse_ema_cfg(mc))
-        .unwrap_or(12);
-    let search_start_dt = ema_approximate_start(start_ts.date(), &path.tick, ema_period)?;
-    let prices = get_stock_tick_prices(
-        &pool,
-        &jq,
-        &path.tick,
-        &path.code,
-        search_start_dt.and_hms(0, 0, 0),
-        end_ts,
-    )
-    .await?;
-    let ema = approximate_ema(&prices, ema_period, |p| p.close.clone(), |p| p.ts);
-    assert_eq!(prices.len(), ema.len());
-    let data: Vec<Metric> = ema.into_iter().filter(|e| e.ts >= start_ts).collect();
-    respond_json(Response {
-        code: path.code.to_owned(),
-        tick: path.tick.to_owned(),
-        start_ts,
-        end_ts,
-        data,
-    })
-}
-
-fn parse_ema_cfg(s: &str) -> Option<u32> {
-    if let Some(cfg) = s.split(',').find(|c| c.starts_with("ema:")) {
-        if let Some(num) = cfg.split(':').nth(1) {
-            if let Ok(n) = num.parse() {
-                return Some(n);
-            }
+impl Default for MacdMetric {
+    fn default() -> Self {
+        MacdMetric {
+            fast_ema_period: 12,
+            slow_ema_period: 26,
+            dea_period: 9,
+            dif: Vec::new(),
+            dea: Vec::new(),
+            macd: Vec::new(),
         }
     }
-    None
 }
 
-#[get("/metrics/macd/{code}/ticks/{tick}")]
-pub async fn api_get_metrics_macd(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<MacdMetric>>> {
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MacdCfg {
+    fast_ema_period: u32,
+    slow_ema_period: u32,
+    dea_period: u32,
+}
+
+impl Default for MacdCfg {
+    fn default() -> Self {
+        MacdCfg {
+            fast_ema_period: 12,
+            slow_ema_period: 26,
+            dea_period: 9,
         }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    let difdea_cfg = match param.metrics_cfg {
-        Some(ref s) => parse_difdea_cfg(s),
-        None => (None, None, None),
-    };
-    let fast_ema_period = difdea_cfg.0.unwrap_or(12);
-    let slow_ema_period = difdea_cfg.1.unwrap_or(26);
-    let dea_period = difdea_cfg.2.unwrap_or(9);
+    }
+}
+
+pub async fn get_metrics_macd(
+    db: &DbPool,
+    jq: &JqdataClient,
+    basic_cfg: BasicCfg,
+    macd_cfg: MacdCfg,
+) -> Result<MacdMetric> {
+    let fast_ema_period = macd_cfg.fast_ema_period;
+    let slow_ema_period = macd_cfg.slow_ema_period;
+    let dea_period = macd_cfg.dea_period;
     if slow_ema_period < fast_ema_period || slow_ema_period < dea_period {
         return Err(Error::custom(
             ErrorKind::BadRequest,
@@ -134,14 +96,15 @@ pub async fn api_get_metrics_macd(
             ),
         ));
     }
-    let search_start_dt = ema_approximate_start(start_ts.date(), &path.tick, slow_ema_period)?;
+    let search_start_dt =
+        ema_approximate_start(basic_cfg.start_ts.date(), &basic_cfg.tick, slow_ema_period)?;
     let prices = get_stock_tick_prices(
-        &pool,
+        &db,
         &jq,
-        &path.tick,
-        &path.code,
+        &basic_cfg.tick,
+        &basic_cfg.code,
         search_start_dt.and_hms(0, 0, 0),
-        end_ts,
+        basic_cfg.end_ts,
     )
     .await?;
     let (dif_raw, dea_raw, macd_raw) = approximate_macd(
@@ -152,45 +115,55 @@ pub async fn api_get_metrics_macd(
         |p| p.close.clone(),
         |p| p.ts,
     );
-    let dif = dif_raw.into_iter().filter(|d| d.ts >= start_ts).collect();
-    let dea = dea_raw.into_iter().filter(|d| d.ts >= start_ts).collect();
-    let macd = macd_raw.into_iter().filter(|d| d.ts >= start_ts).collect();
-    respond_json(Response {
-        code: path.code.to_owned(),
-        tick: path.tick.to_owned(),
-        start_ts,
-        end_ts,
-        data: MacdMetric {
-            fast_ema_period,
-            slow_ema_period,
-            dea_period,
-            dif,
-            dea,
-            macd,
-        },
+    let dif = dif_raw
+        .into_iter()
+        .filter(|d| d.ts >= basic_cfg.start_ts)
+        .collect();
+    let dea = dea_raw
+        .into_iter()
+        .filter(|d| d.ts >= basic_cfg.start_ts)
+        .collect();
+    let macd = macd_raw
+        .into_iter()
+        .filter(|d| d.ts >= basic_cfg.start_ts)
+        .collect();
+    Ok(MacdMetric {
+        fast_ema_period,
+        slow_ema_period,
+        dea_period,
+        dif,
+        dea,
+        macd,
     })
 }
 
-fn parse_difdea_cfg(s: &str) -> (Option<u32>, Option<u32>, Option<u32>) {
-    let mut fast_ema = None;
-    let mut slow_ema = None;
-    let mut dea = None;
+pub fn parse_macd_cfg(s: &str) -> Option<MacdCfg> {
+    let mut fast_ema_period = None;
+    let mut slow_ema_period = None;
+    let mut dea_period = None;
     for c in s.split(',') {
         if c.starts_with("fast_ema:") {
             if let Ok(n) = c[9..].parse() {
-                fast_ema = Some(n);
+                fast_ema_period = Some(n);
             }
         } else if c.starts_with("slow_ema:") {
             if let Ok(n) = c[9..].parse() {
-                slow_ema = Some(n);
+                slow_ema_period = Some(n);
             }
         } else if c.starts_with("dea:") {
             if let Ok(n) = c[4..].parse() {
-                dea = Some(n);
+                dea_period = Some(n);
             }
         }
     }
-    (fast_ema, slow_ema, dea)
+    match (fast_ema_period, slow_ema_period, dea_period) {
+        (Some(fast_ema_period), Some(slow_ema_period), Some(dea_period)) => Some(MacdCfg {
+            fast_ema_period,
+            slow_ema_period,
+            dea_period,
+        }),
+        _ => None,
+    }
 }
 
 fn ema_approximate_start(start_dt: NaiveDate, tick: &str, period: u32) -> Result<NaiveDate> {

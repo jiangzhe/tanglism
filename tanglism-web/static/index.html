@@ -3,41 +3,39 @@
     <head>
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>        
-        <base href="/"/>
-        <!-- <link rel="stylesheet" href="./css/bootstrap-4.4.1.min.css"/> -->
-        <link rel="stylesheet" href="jquery-ui.min.css"/>
-        <link rel="stylesheet" href="main.css"/>
+        <link rel="stylesheet" href="./jquery-ui.min.css"/>
+        <link rel="stylesheet" href="./main.css"/>
         <title>缠论分析</title>
     </head>
     <body>
         <div id="search_bar" style="margin-bottom: 20px">
             <fieldset>
                 <legend>股票查询</legend>
-                <label>股票代码：</label><input type="text" id="input_stock_code" class="stock_submission_trigger"/>
-                <label>起始日期：</label><input type="text" id="input_start_dt" autocomplete="off" class="stock_submission_trigger"/>
-                <label>结束日期：</label><input type="text" id="input_end_dt" autocomplete="off" class="stock_submission_trigger"/>
+                <label>股票代码：</label><input type="text" id="input_stock_code" class="basic_trigger"/>
+                <label>起始日期：</label><input type="text" id="input_start_dt" autocomplete="off" class="basic_trigger"/>
+                <label>结束日期：</label><input type="text" id="input_end_dt" autocomplete="off" class="basic_trigger"/>
                 <label>周期：</label>
-                <select id="input_tick" class="stock_submission_trigger">
+                <select id="input_tick" class="basic_trigger">
                     <option>5m</option>
                     <option selected>30m</option>
                     <option>1d</option>
                 </select>
                 <br/>
                 <label>独立K线成笔：</label>
-                <input type="radio" id="indep_k_check" name="stroke_logic_indep_k" value="indep_k" class="stock_submission_trigger" checked/>
+                <input type="radio" id="indep_k_check" name="stroke_logic_indep_k" value="indep_k" class="stroke_trigger" checked/>
                 <label for="indep_k_check">检查独立K线</label>
-                <input type="radio" id="non_indep_k_check" name="stroke_logic_indep_k" class="stock_submission_trigger" value="non_indep_k"/>
+                <input type="radio" id="non_indep_k_check" name="stroke_logic_indep_k" class="stroke_trigger" value="non_indep_k"/>
                 <label for="non_indep_k_check">不检查独立K线</label>
                 <br/>
                 <label>缺口成笔：</label>
-                <input type="radio" id="gap_none_check" name="stroke_logic_gap" value="gap_none" class="stock_submission_trigger" checked/>
+                <input type="radio" id="gap_none_check" name="stroke_logic_gap" value="gap_none" class="stroke_trigger" checked/>
                 <label for="gap_none_check">无</label>
-                <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening" class="stock_submission_trigger"/>
+                <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening" class="stroke_trigger"/>
                 <label for="gap_opening_check">开盘跳空缺口成笔</label>
-                <input type="radio" id="gap_ratio_check" name="stroke_logic_gap" value="gap_ratio" class="stock_submission_trigger"/>
+                <input type="radio" id="gap_ratio_check" name="stroke_logic_gap" value="gap_ratio" class="stroke_trigger"/>
                 <label for="gap_ratio_check">跳空缺口幅度成笔</label>    
                 <span id="gap_ratio_percentage_span" style="display:none">
-                    <input type="number" id="gap_ratio_percentage" value="1.0" step="0.1" min="0.1" class="stock_submission_trigger"/>
+                    <input type="number" id="gap_ratio_percentage" value="1.0" step="0.1" min="0.1" class="stroke_trigger"/>
                     <label for="gap_ratio_percentage">%</label>
                 </span>
                 <br/>
@@ -62,13 +60,13 @@
                 <input type="number" id="metric_height" value="100" step="50" min="50" autocomplete="off" class="draw_trigger"/>
                 <br/>
                 <label>形态显示：</label>
-                <input type="checkbox" id="stroke_draw" value="stroke_draw" class="draw_trigger"/>
+                <input type="checkbox" id="stroke_draw" value="stroke_draw" class="morph_trigger"/>
                 <label for="stroke_draw">笔</label>
-                <input type="checkbox" id="segment_draw" value="segment_draw" class="draw_trigger"/>
+                <input type="checkbox" id="segment_draw" value="segment_draw" class="morph_trigger"/>
                 <label for="segment_draw">线段</label>
-                <input type="checkbox" id="subtrend_draw" value="subtrend_draw" class="draw_trigger" checked/>
+                <input type="checkbox" id="subtrend_draw" value="subtrend_draw" class="morph_trigger" checked/>
                 <label for="subtrend_draw">次级别</label>
-                <input type="checkbox" id="center_draw" value="center_draw" class="draw_trigger" checked/>
+                <input type="checkbox" id="center_draw" value="center_draw" class="morph_trigger" checked/>
                 <label for="center_draw">中枢</label>
             </fieldset>
         </div>

@@ -6,12 +6,10 @@ export const segment = {
     table,
     clear_table,
     draw,
-    ajax,
     outdate
 }
 
 import { kline, tooltip } from './tanglism-kline.js';
-import { ajax_params } from './tanglism-common.js';
 
 const _data = [];
 var _outdate = true;
@@ -91,7 +89,7 @@ function draw(config) {
       return;
     }
     if (_outdate) {
-      ajax(ajax_params());
+      console.log("segment outdate");
       return;
     }
     var conf = config || kline.conf();
@@ -182,28 +180,6 @@ function draw(config) {
           // 还原
           d3.select(this).attr("stroke-width", 2);
         });
-};
-
-function ajax(params) {
-    // tick, code, start_dt, end_dt, stroke_cfg
-    $.ajax({
-      url: "api/v1/tanglism/segments/" + encodeURIComponent(params.code)
-        + "/ticks/" + encodeURIComponent(params.tick) 
-        + "?start_dt=" + encodeURIComponent(params.start_dt) 
-        + "&end_dt=" + encodeURIComponent(params.end_dt)
-        + "&stroke_cfg=" + encodeURIComponent(params.stroke_cfg),
-      method: "GET",
-      dataType: "json",
-      success: function(resp) {
-        data(resp.data),
-        draw();
-        table();
-      },
-      error: function(err) {
-        console.log("ajax error on query strokes", err);
-        clear_table();
-      }
-    });
 };
 
 function outdate() {

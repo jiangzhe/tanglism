@@ -1,4 +1,3 @@
-pub mod health;
 pub mod metrics;
 pub mod stock_prices;
 pub mod stocks;
@@ -46,6 +45,7 @@ pub struct Paginated<T> {
     page_size: i64,
 }
 
+#[allow(dead_code)]
 impl<T> Paginated<T> {
     pub fn load_and_count_total<U>(self, conn: &PgConnection) -> QueryResult<(Vec<U>, i64)>
     where

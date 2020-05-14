@@ -125,7 +125,7 @@ where
 }
 
 /// 仅使用次级别走势判断本级别中枢
-/// 
+///
 /// 以下判断逻辑以段指称次级别走势：
 /// 当连续三段重合时，取第一段的前一段，
 /// 若前一段的起点高于候选中枢的区间高点，则中枢必须以向上段作为起始。
@@ -142,7 +142,7 @@ pub fn merge_centers(subtrends: &[SubTrend], base_level: i32) -> Vec<Center> {
                 // 相差5段以上时，不再与前中枢进行比较，而是与第一段的前一段进行比较
                 // 当且仅当前一段的区间包含中枢区间时，才形成中枢
                 if let Some(cc) = maybe_center(subtrends, i, base_level) {
-                    if let Some(prev_s) = subtrends.get(i-3) {
+                    if let Some(prev_s) = subtrends.get(i - 3) {
                         let (prev_min, prev_max) = prev_s.sorted();
                         if prev_min <= &cc.shared_low && prev_max >= &cc.shared_high {
                             ca.add_last(i, cc);
@@ -186,7 +186,7 @@ pub fn merge_centers(subtrends: &[SubTrend], base_level: i32) -> Vec<Center> {
             }
         } else if let Some(cc) = maybe_center(subtrends, i, base_level) {
             // 判断新中枢
-            if let Some(prev_s) = subtrends.get(i-3) {
+            if let Some(prev_s) = subtrends.get(i - 3) {
                 let (prev_min, prev_max) = prev_s.sorted();
                 if prev_min <= &cc.shared_low && prev_max >= &cc.shared_high {
                     ca.add_last(i, cc);
@@ -204,7 +204,7 @@ struct CenterArray {
 
 impl CenterArray {
     fn new() -> Self {
-        CenterArray{
+        CenterArray {
             cs: Vec::new(),
             end_idx: 0,
         }
@@ -220,7 +220,10 @@ impl CenterArray {
         self.cs.last()
     }
 
-    fn modify_last<F>(&mut self, end_idx: usize, f: F) where F: Fn(&mut Center) {
+    fn modify_last<F>(&mut self, end_idx: usize, f: F)
+    where
+        F: Fn(&mut Center),
+    {
         self.end_idx = end_idx;
         if let Some(last) = self.cs.last_mut() {
             f(last);
@@ -288,8 +291,8 @@ impl CenterArray {
 //                 // 2. 当前走势跨越整个中枢区间，即最高点高于中枢区间，最低点低于中枢区间
 //                 // 3. 且不能跨越走势
 //                 let (s3_min, s3_max) = s3.sorted();
-//                 if (s3.end_price >= lc.shared_low && s3.end_price <= lc.shared_high) 
-//                     || (s3_min <= &lc.shared_low && s3_max >= &lc.shared_high) 
+//                 if (s3.end_price >= lc.shared_low && s3.end_price <= lc.shared_high)
+//                     || (s3_min <= &lc.shared_low && s3_max >= &lc.shared_high)
 //                 {
 //                     let (cross, next_idx) = center_cross_segments(segments, lc.start_ts, s3.end_ts, sg_idx);
 //                     if !cross {
@@ -351,7 +354,7 @@ impl CenterArray {
 //                 if post_sg.start_pt.extremum_ts < c_end {  // 后一条线段起点在中枢内，不与中枢终点重合
 //                     // 对所有跨越的情况都必须保持返回的start_idx不变
 //                     return (true, start_idx);
-//                 } 
+//                 }
 //                 // 后一条线段起点在中枢后
 //                 return (false, start_idx);
 //             }
@@ -385,7 +388,12 @@ fn maybe_center(subtrends: &[SubTrend], idx: usize, base_level: i32) -> Option<C
     if idx < 3 {
         return None;
     }
-    center3(&subtrends[idx-2], &subtrends[idx-1], &subtrends[idx], base_level)
+    center3(
+        &subtrends[idx - 2],
+        &subtrends[idx - 1],
+        &subtrends[idx],
+        base_level,
+    )
 }
 
 fn center3(s1: &SubTrend, s2: &SubTrend, s3: &SubTrend, base_level: i32) -> Option<Center> {
@@ -446,9 +454,9 @@ fn abs_diff(d1: &BigDecimal, d2: &BigDecimal) -> BigDecimal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shape::{Parting, Segment};
     use bigdecimal::BigDecimal;
     use chrono::NaiveDateTime;
-    use crate::shape::{Segment, Parting};
 
     #[test]
     fn test_center2_single() {
@@ -935,7 +943,7 @@ mod tests {
     //                 right_gap: None,
     //             },
     //         },
-            
+
     //     ]);
     //     assert_eq!(1, cs.len());
     //     assert_eq!(new_ts("2020-02-10 15:00"), cs[0].start_ts);

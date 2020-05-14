@@ -1,108 +1,22 @@
-use super::{Paginate, Pagination};
-use crate::helpers::respond_json;
 use crate::{DbPool, Result};
-use actix_web::web::Json;
-use actix_web::{get, web};
 use chrono::NaiveDate;
-use serde_derive::*;
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "content")]
-pub enum Response {
-    Pagination {
-        #[serde(flatten)]
-        pagination: Pagination,
-        data: Vec<NaiveDate>,
-    },
-    Raw(Vec<NaiveDate>),
-}
-
-// default page size is 10
-const DEFAULT_PAGE_SIZE: i64 = 10;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RequestParam {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    start: Option<NaiveDate>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    end: Option<NaiveDate>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page_size: Option<i64>,
-}
-
-#[get("/trade-days")]
-pub async fn api_get_trade_days(
-    pool: web::Data<DbPool>,
-    web::Query(param): web::Query<RequestParam>,
-) -> Result<Json<Response>> {
-    let resp = web::block(move || get_trade_days(&pool, param)).await?;
-    respond_json(resp)
-}
 
 // get data from db
-pub fn get_trade_days(pool: &DbPool, param: RequestParam) -> Result<Response> {
+#[allow(dead_code)]
+pub async fn get_trade_days(
+    pool: &DbPool,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<Vec<NaiveDate>> {
     use crate::schema::trade_days::dsl::*;
     use diesel::prelude::*;
     let conn = pool.get()?;
-
-    // make boxed query to enable conditional where clause
-    let mut query = trade_days.into_boxed();
-    if let Some(start) = param.start {
-        query = query.filter(dt.ge(start));
-    }
-    if let Some(end) = param.end {
-        query = query.filter(dt.le(end));
-    }
-    // conditional pagination
-    if let Some(page) = param.page {
-        let page_size = param.page_size.unwrap_or(DEFAULT_PAGE_SIZE);
-        let (data, total) = query
+    let rs = tokio::task::spawn_blocking(move || {
+        trade_days
+            .filter(dt.gt(start).and(dt.le(end)))
             .select(dt)
-            .paginate(page, page_size)
-            .load_and_count_total::<NaiveDate>(&conn)?;
-        return Ok(Response::Pagination {
-            pagination: Pagination {
-                total,
-                page,
-                page_size,
-            },
-            data,
-        });
-    }
-    let rs = query.select(dt).load::<NaiveDate>(&conn)?;
-    Ok(Response::Raw(rs))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::Pagination;
-    use super::*;
-
-    #[test]
-    fn test_trade_days_json_raw() {
-        let raw_resp = Response::Raw(vec![]);
-        let json = serde_json::to_string(&raw_resp).unwrap();
-        assert_eq!(r#"{"type":"Raw","content":[]}"#, json);
-    }
-
-    #[test]
-    fn test_trade_days_json_pagination() {
-        let pg = Pagination {
-            total: 0,
-            page: 1,
-            page_size: 10,
-        };
-        let data = vec![];
-        let pg_resp = Response::Pagination {
-            pagination: pg,
-            data,
-        };
-        let json = serde_json::to_string(&pg_resp).unwrap();
-        assert_eq!(
-            r#"{"type":"Pagination","content":{"total":0,"page":1,"page_size":10,"data":[]}}"#,
-            json
-        );
-    }
+            .load::<NaiveDate>(&conn)
+    })
+    .await??;
+    Ok(rs)
 }

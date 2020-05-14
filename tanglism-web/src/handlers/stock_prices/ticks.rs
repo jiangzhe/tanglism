@@ -19,8 +19,6 @@ pub struct Param {
     pub end_dt: Option<String>,
 }
 
-pub type Response = super::Response<StockPrice>;
-
 #[derive(Debug, Serialize, Deserialize, Queryable, Clone)]
 pub struct StockPrice {
     pub ts: NaiveDateTime,

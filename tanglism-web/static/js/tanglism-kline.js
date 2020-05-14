@@ -72,7 +72,17 @@ function data(input) {
     if (input) {
         while(_data.length > 0) { _data.pop(); }
         for (var i = 0; i < input.length; i++) {
-            _data.push(input[i]);
+            // 解析浮点数
+            var d = input[i];
+            _data.push({
+              ts: d.ts,
+              open: parseFloat(d.open),
+              close: parseFloat(d.close),
+              high: parseFloat(d.high),
+              low: parseFloat(d.low),
+              amount: parseFloat(d.amount),
+              volume: parseFloat(d.volume)
+            });
         }
         return;
     }
@@ -82,16 +92,10 @@ function data(input) {
 // draw函数
 function draw() {
     var conf = kline.conf();
-    // 创建K线图
-    if (!d3.select("#k_lines").empty()) {
-      // 如存在则删除
-      d3.select("#k_lines").remove();
+    var svg = d3.select("#k_lines");
+    if (svg.empty()) {
+      return;
     }
-    var svg = d3.select("#k_container")
-      .append("svg")
-      .attr("id", "k_lines")
-      .attr("width", conf.w)
-      .attr("height", conf.h);
     // 画图
     svg.selectAll("rect").data(kline.data()).enter().append("rect")
         .attr("x", function(d, i) {
