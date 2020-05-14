@@ -1,15 +1,14 @@
-use actix_web::error::ResponseError;
-use actix_web::HttpResponse;
+// use actix_web::error::ResponseError;
+// use actix_web::HttpResponse;
 use derive_more::Display;
 use serde_derive::*;
 use std::fmt;
 
 /// the error type for web server
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     Simple(ErrorKind),
     Custom(ErrorKind, String),
-    Nested(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl Error {
@@ -22,30 +21,6 @@ impl Error {
     pub fn custom(kind: ErrorKind, err: String) -> Error {
         Error::Custom(kind, err)
     }
-
-    // construct nested error
-    pub fn nested(err: Box<dyn std::error::Error + Send + Sync>) -> Error {
-        Error::Nested(err)
-    }
-
-    // helper function to convert kind and error message into http response
-    pub fn kind_to_response(kind: ErrorKind, err: &str) -> HttpResponse {
-        match kind {
-            ErrorKind::BadRequest => HttpResponse::BadRequest().json::<ErrorResponse>(err.into()),
-            ErrorKind::NotFound => HttpResponse::NotFound().json::<ErrorResponse>(err.into()),
-            ErrorKind::InternalServerError => {
-                HttpResponse::InternalServerError().json::<ErrorResponse>(err.into())
-            }
-            ErrorKind::IO => HttpResponse::InternalServerError()
-                .json::<ErrorResponse>((format!("IO Error: {}", err)).into()),
-            ErrorKind::Diesel => HttpResponse::InternalServerError()
-                .json::<ErrorResponse>(format!("Diesel Error: {}", err).into()),
-            ErrorKind::Jqdata => HttpResponse::InternalServerError()
-                .json::<ErrorResponse>(format!("Jqdata Error: {}", err).into()),
-            ErrorKind::DbConn => HttpResponse::InternalServerError()
-                .json::<ErrorResponse>(format!("DbConn Error: {}", err).into()),
-        }
-    }
 }
 
 impl fmt::Display for Error {
@@ -53,7 +28,6 @@ impl fmt::Display for Error {
         match self {
             Error::Simple(kind) => write!(fmt, "{}", kind),
             Error::Custom(kind, s) => write!(fmt, "{}: {}", kind, s),
-            Error::Nested(err) => write!(fmt, "{}", err),
         }
     }
 }
@@ -107,8 +81,8 @@ impl From<tanglism_morph::Error> for Error {
     }
 }
 
-impl<E: std::fmt::Debug> From<actix_threadpool::BlockingError<E>> for Error {
-    fn from(err: actix_threadpool::BlockingError<E>) -> Error {
+impl From<tokio::task::JoinError> for Error {
+    fn from(err: tokio::task::JoinError) -> Error {
         Error::custom(ErrorKind::InternalServerError, err.to_string())
     }
 }
@@ -116,19 +90,6 @@ impl<E: std::fmt::Debug> From<actix_threadpool::BlockingError<E>> for Error {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ErrorResponse {
     errors: Vec<String>,
-}
-
-// implements ResponseError to allow converting error to response
-impl ResponseError for Error {
-    fn error_response(&self) -> HttpResponse {
-        match self {
-            Error::Simple(kind) => Self::kind_to_response(*kind, "no message"),
-            Error::Custom(kind, err) => Self::kind_to_response(*kind, err),
-            Error::Nested(err) => {
-                Self::kind_to_response(ErrorKind::InternalServerError, &err.to_string())
-            }
-        }
-    }
 }
 
 impl From<&str> for ErrorResponse {
@@ -150,3 +111,5 @@ impl From<Vec<String>> for ErrorResponse {
         ErrorResponse { errors }
     }
 }
+
+impl warp::reject::Reject for Error {}

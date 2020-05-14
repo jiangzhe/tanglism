@@ -1,33 +1,16 @@
-import { ajax_params, validate_ajax_params } from './tanglism-common.js';
-import { kline } from './tanglism-kline.js';
-import { stroke } from './tanglism-stroke.js';
-import { segment } from './tanglism-segment.js';
-import { subtrend } from './tanglism-subtrend.js';
-import { center } from './tanglism-center.js';
 import { metric } from './tanglism-metric.js';
+import { setupWebsocketEvents, validate_basic_cfg, draw } from './tanglism-draw.js';
 
 $(document).ready(function() {
-  // 将各形态函数注册到K线回调上
-  kline.add_draw_callback(stroke.draw);
-  kline.add_draw_callback(segment.draw);
-  kline.add_draw_callback(subtrend.draw);
-  kline.add_draw_callback(center.draw);
-  kline.add_draw_callback(metric.draw);
-  // 将各形态数据过期关联到K线数据回调
-  kline.add_data_callback(stroke.outdate);
-  kline.add_data_callback(segment.outdate);
-  kline.add_data_callback(subtrend.outdate);
-  kline.add_data_callback(center.outdate);
-  kline.add_data_callback(metric.outdate);
   // 股票选择
   $("#input_stock_code").autocomplete({
     source: function(req, callback) {
       $.ajax({
-        url: "api/v1/keyword-stocks?keyword=" + encodeURIComponent(req.term),
+        url: "/api/keyword-stocks?keyword=" + encodeURIComponent(req.term),
         method: "GET",
         dataType: "json",
         success: function(resp) {
-          callback($.map(resp.content, function(item){
+          callback($.map(resp, function(item){
             return {
               value: item.code,
               label: item.code + " " + item.display_name
@@ -62,12 +45,6 @@ $(document).ready(function() {
       $("#gap_ratio_percentage_span").css("display", "none");
     }
   });
-  // 提交事件
-  $(".stock_submission_trigger").change(function() {
-    if (validate_ajax_params()) {
-      kline.ajax(ajax_params());
-    }
-  });
   // 柱间距选择
   $("input[name='bar_padding']").click(function(e){
     var value = $(this).val();
@@ -79,10 +56,13 @@ $(document).ready(function() {
   });
   // 画图事件
   $(".draw_trigger").change(function() {
-    if (validate_ajax_params()) {
-      kline.draw();
-      metric.draw();
+    if (validate_basic_cfg()) {
+      draw();
     }
-  })
+  });
+
+  // websocket
+  var ws = new WebSocket("ws://" + location.hostname + ":" + location.port + "/ws/");
+  setupWebsocketEvents(ws);
 });
 

@@ -106,7 +106,11 @@ function data(metric_name, input) {
     if (input) {
         while(_data[metric_name].length > 0) { _data[metric_name].pop(); }
         for (var i = 0; i < input.length; i++) {
-            _data[metric_name].push(input[i]);
+            // 将value转化为浮点数
+            _data[metric_name].push({
+                ts: input[i].ts,
+                value: parseFloat(input[i].value)
+            });
         }
         _display[metric_name].outdate = false;
         _display[metric_name].status = "ok";
@@ -140,7 +144,6 @@ function draw() {
         if (_display[mn].enabled) {
             // 数据过期，则重新申请
             if (_display[mn].outdate) {
-                ajax(ajax_params());
                 // 直接返回
                 return;
             }
@@ -215,65 +218,6 @@ function draw_bar(conf) {
             if (conf.symscale(d.value) * 2 >= conf.h) return "red";
             return "green";
         });
-}
-
-function ajax(params) {
-    var macd = false;
-    for (var mn of Object.keys(_display)) {
-        if (_display[mn].enabled && _display[mn].outdate && _display[mn].status !== "pending") {
-            if (mn === "DIF" || mn == "DEA" || mn == "MACD") {
-                macd = true;
-            }
-        }
-    }
-    if (macd) {
-        ajax_macd(params);
-    }
-}
-
-function ajax_macd(params) {
-    _display["DIF"].status = "pending";
-    _display["DEA"].status = "pending";
-    _display["MACD"].status = "pending";
-    $.ajax({
-        url: "api/v1/metrics/macd/" + encodeURIComponent(params.code)
-          + "/ticks/" + encodeURIComponent(params.tick) + "?start_dt="
-          + encodeURIComponent(params.start_dt) + "&end_dt="
-          + encodeURIComponent(params.end_dt),
-        method: "GET",
-        dataType: "json",
-        success: function(resp) {
-          var dif = $.map(resp.data.dif, function(item) {
-            return {
-              ts: item.ts,
-              value: parseFloat(item.value)
-            };
-          });
-          var dea = $.map(resp.data.dea, function(item) {
-              return {
-                  ts: item.ts,
-                  value: parseFloat(item.value)
-              };
-          });
-          var macd = $.map(resp.data.macd, function(item) {
-              return {
-                  ts: item.ts,
-                  value: parseFloat(item.value)
-              };
-          });
-          data("DIF", dif);
-          data("DEA", dea);
-          data("MACD", macd);
-          draw();
-        },
-        error: function(err) {
-          console.log("ajax error on query DIF/DEA metrics", err);
-          _display["DIF"].status = "error";
-          _display["DEA"].status = "error";
-          _display["MACD"].status = "error";
-          clear_drawing();
-        }
-    });
 }
 
 function clear_drawing() {

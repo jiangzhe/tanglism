@@ -5,12 +5,10 @@ export const stroke = {
     table,
     clear_table,
     draw,
-    ajax,
     outdate
 };
 
 import { kline, tooltip } from './tanglism-kline.js';
-import { ajax_params } from './tanglism-common.js';
 
 // 笔数据
 const _data = [];
@@ -35,7 +33,7 @@ function draw(config) {
       return;
     }
     if (_outdate) {
-      ajax(ajax_params());
+      console.log("stroke outdate");
       return;
     }
 
@@ -183,28 +181,6 @@ function table() {
       .on("mouseout", function(){
         d3.select(this).style("background-color", "white");
       });
-};
-
-function ajax(params) {
-    // tick, code, start_dt, end_dt, stroke_cfg
-    $.ajax({
-      url: "api/v1/tanglism/strokes/" + encodeURIComponent(params.code)
-        + "/ticks/" + encodeURIComponent(params.tick) 
-        + "?start_dt=" + encodeURIComponent(params.start_dt) 
-        + "&end_dt=" + encodeURIComponent(params.end_dt)
-        + "&stroke_cfg=" + encodeURIComponent(params.stroke_cfg),
-      method: "GET",
-      dataType: "json",
-      success: function(resp) {
-        data(resp.data),
-        draw();
-        table();
-      },
-      error: function(err) {
-        console.log("ajax error on query strokes", err);
-        clear_table();
-      }
-    });
 };
 
 function outdate() {

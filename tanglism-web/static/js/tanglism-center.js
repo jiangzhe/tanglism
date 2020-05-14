@@ -5,12 +5,10 @@ export const center = {
     table,
     clear_table,
     draw,
-    ajax,
     outdate
 };
 
 import { kline } from './tanglism-kline.js';
-import { ajax_params } from './tanglism-common.js';
 
 const _data = [];
 var _outdate = true;
@@ -94,14 +92,14 @@ function draw(config) {
       return;
     }
     if (_outdate) {
-      ajax(ajax_params());
+      console.log("center outdate");
       return;
     }
     var conf = config || kline.conf();
     // 无K线图，直接退出
-    if (d3.select("#k_lines").empty()) {
-      return;
-    }
+    // if (d3.select("#k_lines").empty()) {
+    //   return;
+    // }
     // 无K线数据或中枢数据，直接退出
     if (kline.data().length == 0 || _data.length == 0) {
       return;
@@ -159,27 +157,6 @@ function draw(config) {
         })
         .attr("fill", "gold")
         .attr("opacity", 0.5);
-};
-
-function ajax(params) {
-    $.ajax({
-      url: "api/v1/tanglism/centers/" + encodeURIComponent(params.code)
-        + "/ticks/" + encodeURIComponent(params.tick) 
-        + "?start_dt=" + encodeURIComponent(params.start_dt) 
-        + "&end_dt=" + encodeURIComponent(params.end_dt)
-        + "&stroke_cfg=" + encodeURIComponent(params.stroke_cfg),
-      method: "GET",
-      dataType: "json",
-      success: function(resp) {
-        data(resp.data),
-        table();
-        draw();
-      },
-      error: function(err) {
-        console.log("ajax error on query strokes", err);
-        clear_table();
-      }
-    });
 };
 
 function outdate() {

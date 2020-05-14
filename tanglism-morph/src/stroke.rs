@@ -19,7 +19,7 @@ where
     StrokeShaper::new(pts, tts, StrokeConfig::default()).run()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StrokeConfig {
     pub indep_k: bool,
     pub judge: StrokeJudge,
@@ -36,7 +36,7 @@ impl Default for StrokeConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StrokeJudge {
     None,
     // 开盘缺口，是否包含下午盘开盘
@@ -45,7 +45,7 @@ pub enum StrokeJudge {
     GapRatio(BigDecimal),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StrokeBacktrack {
     None,
     Diff(BigDecimal),

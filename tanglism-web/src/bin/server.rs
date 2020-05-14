@@ -3,7 +3,7 @@ use std::env;
 use structopt::StructOpt;
 use tanglism_web::{server, Result};
 
-#[actix_rt::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     // env::set_var("RUST_LOG", "actix_web=debug,actix_server=info,diesel=debug");
     env_logger::init();
@@ -41,7 +41,7 @@ pub struct ServerOpt {
         help = "specify server port to listen, by default 8080",
         default_value = "8080"
     )]
-    port: u32,
+    port: u16,
     #[structopt(short, long, help = "specify dbfile to use")]
     dburl: Option<String>,
     #[structopt(short, long, help = "specify jqdata account to use")]

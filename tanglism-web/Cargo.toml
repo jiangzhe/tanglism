@@ -10,20 +10,13 @@ name = "tanglism-web"
 path = "./src/bin/server.rs"
 
 [dependencies]
-actix = "0.9"
-actix-web = "2"
-actix-rt = "1"
-actix-files = "0.2"
-actix-session = "0.3"
-actix-utils = "1"
-actix-web-actors = "2"
-actix-threadpool = "0.3"
 futures = "0.3"
 env_logger = "0.7"
-bytes = "0.5"
+bytes = "0.5.4"
 derive_more = "0.99"
 serde = "1.0"
 serde_derive = "1.0"
+serde_json = "1.0"
 actix-cors = "0.2"
 tanglism-morph = { version = "0.1.0", path = "../tanglism-morph" }
 tanglism-utils = { version = "0.1.0", path = "../tanglism-utils" }
@@ -36,7 +29,8 @@ jqdata = "0.3.4"
 r2d2 = "0.8"
 log = "0.4"
 lazy_static = "1.4.0"
-tokio = { version = "0.2", features = ["sync"] }
+tokio = { version = "0.2", features = ["full"] }
+warp = "0.2"
 
 [dev-dependencies]
 serde_json = "1.0"

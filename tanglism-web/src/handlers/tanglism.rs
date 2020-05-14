@@ -1,22 +1,14 @@
-use super::stock_prices::{get_stock_tick_prices, ticks};
-use crate::helpers::respond_json;
-use crate::{DbPool, Error, ErrorKind, Result};
-use actix_web::web::Json;
-use actix_web::{get, web};
+use super::stock_prices::ticks;
+use crate::{Error, ErrorKind, Result};
 use bigdecimal::BigDecimal;
 use chrono::NaiveDateTime;
-use jqdata::JqdataClient;
-use serde::Serialize;
 use serde_derive::*;
 use std::str::FromStr;
 use tanglism_morph::{
-    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig,
-    StrokeJudge, StrokeShaper, K,
+    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K,
 };
 use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend};
-use tanglism_utils::{
-    parse_ts_from_str, LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN,
-};
+use tanglism_utils::{LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -38,278 +30,7 @@ pub struct Param {
     pub stroke_cfg: Option<String>,
 }
 
-#[get("/tanglism/partings/{code}/ticks/{tick}")]
-pub async fn api_get_tanglism_partings(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<ticks::Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<Vec<Parting>>>> {
-    let tick = &path.tick;
-    let code = &path.code;
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
-        }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    let prices = get_stock_tick_prices(&pool, &jq, &tick, &code, start_ts, end_ts).await?;
-    let data = get_tanglism_partings(&prices)?;
-    respond_json(Response {
-        code: code.to_owned(),
-        tick: tick.to_owned(),
-        start_ts,
-        end_ts,
-        data,
-    })
-}
-
-#[get("/tanglism/strokes/{code}/ticks/{tick}")]
-pub async fn api_get_tanglism_strokes(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<ticks::Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<Vec<Stroke>>>> {
-    let tick = &path.tick;
-    let code = &path.code;
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
-        }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    let stroke_cfg = match param.stroke_cfg {
-        None => StrokeConfig::default(),
-        Some(ref s) => parse_stroke_cfg(s)?,
-    };
-    let prices = get_stock_tick_prices(&pool, &jq, &tick, &code, start_ts, end_ts).await?;
-    let partings = get_tanglism_partings(&prices)?;
-    let data = get_tanglism_strokes(&partings, tick, stroke_cfg)?;
-    respond_json(Response {
-        code: code.to_owned(),
-        tick: tick.to_owned(),
-        start_ts,
-        end_ts,
-        data,
-    })
-}
-
-#[get("/tanglism/segments/{code}/ticks/{tick}")]
-pub async fn api_get_tanglism_segments(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<ticks::Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<Vec<Segment>>>> {
-    let tick = &path.tick;
-    let code = &path.code;
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
-        }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    let stroke_cfg = match param.stroke_cfg {
-        None => StrokeConfig::default(),
-        Some(ref s) => parse_stroke_cfg(s)?,
-    };
-    let prices = get_stock_tick_prices(&pool, &jq, &tick, &code, start_ts, end_ts).await?;
-    let partings = get_tanglism_partings(&prices)?;
-    let strokes = get_tanglism_strokes(&partings, tick, stroke_cfg)?;
-    let data = get_tanglism_segments(&strokes)?;
-    respond_json(Response {
-        code: code.to_owned(),
-        tick: tick.to_owned(),
-        start_ts,
-        end_ts,
-        data,
-    })
-}
-
-// async fn get_tanglism_subtrends(
-//     pool: &DbPool,
-//     jq: &JqdataClient,
-//     tick: &str,
-//     code: &str,
-//     start_ts: NaiveDateTime,
-//     end_ts: NaiveDateTime,
-//     stroke_cfg: StrokeConfig,
-// ) -> Result<Vec<SubTrend>> {
-//     // 取次级别tick
-//     let subtick = match tick {
-//         "1d" => "30m",
-//         "30m" => "5m",
-//         "5m" => "1m",
-//         "1m" => {
-//             return Err(Error::custom(
-//                 ErrorKind::BadRequest,
-//                 "tick 1m cannot have subtrends".to_owned(),
-//             ))
-//         }
-//         _ => {
-//             return Err(Error::custom(
-//                 ErrorKind::BadRequest,
-//                 format!("invalid tick: {}", tick),
-//             ))
-//         }
-//     };
-//     let prices = get_stock_tick_prices(&pool, &jq, subtick, code, start_ts, end_ts).await?;
-//     let partings = get_tanglism_partings(&prices)?;
-//     // 使用次级别tick
-//     let strokes = get_tanglism_strokes(&partings, subtick, stroke_cfg)?;
-//     let segments = get_tanglism_segments(&strokes)?;
-//     // 将笔和线段整合为次级别走势
-//     let data = trend::merge_subtrends::<_, _, crate::Error>(
-//         segments,
-//         strokes,
-//         |sg| {
-//             Ok(SubTrend {
-//                 start_ts: align_tick(tick, sg.start_pt.extremum_ts)?,
-//                 start_price: sg.start_pt.extremum_price.clone(),
-//                 end_ts: align_tick(tick, sg.end_pt.extremum_ts)?,
-//                 end_price: sg.end_pt.extremum_price.clone(),
-//                 level: 2,
-//             })
-//         },
-//         |sk| {
-//             Ok(SubTrend {
-//                 start_ts: align_tick(tick, sk.start_pt.extremum_ts)?,
-//                 start_price: sk.start_pt.extremum_price.clone(),
-//                 end_ts: align_tick(tick, sk.end_pt.extremum_ts)?,
-//                 end_price: sk.end_pt.extremum_price.clone(),
-//                 level: 1,
-//             })
-//         },
-//     )?;
-//     Ok(data)
-// }
-
-#[get("/tanglism/subtrends/{code}/ticks/{tick}")]
-pub async fn api_get_tanglism_subtrends(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<ticks::Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<Vec<SubTrend>>>> {
-    let tick = path.tick.as_ref();
-    let code = &path.code;
-    // 取次级别tick
-    let subtick = match tick {
-        "1d" => "30m",
-        "30m" => "5m",
-        "5m" => "1m",
-        "1m" => {
-            return Err(Error::custom(
-                ErrorKind::BadRequest,
-                "tick 1m cannot have subtrends".to_owned(),
-            ))
-        }
-        _ => {
-            return Err(Error::custom(
-                ErrorKind::BadRequest,
-                format!("invalid tick: {}", tick),
-            ))
-        }
-    };
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
-        }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    // 增加成笔逻辑判断
-    let stroke_cfg = match param.stroke_cfg {
-        None => StrokeConfig::default(),
-        Some(ref s) => parse_stroke_cfg(s)?,
-    };
-    let prices = get_stock_tick_prices(&pool, &jq, &subtick, &code, start_ts, end_ts).await?;
-    let partings = get_tanglism_partings(&prices)?;
-    let strokes = get_tanglism_strokes(&partings, subtick, stroke_cfg)?;
-    let segments = get_tanglism_segments(&strokes)?;
-    let data = get_tanglism_subtrends(&segments, &strokes, &tick)?;
-    respond_json(Response {
-        code: path.code.to_owned(),
-        tick: path.tick.to_owned(),
-        start_ts,
-        end_ts,
-        data,
-    })
-}
-
-#[get("/tanglism/centers/{code}/ticks/{tick}")]
-pub async fn api_get_tanglism_centers(
-    pool: web::Data<DbPool>,
-    jq: web::Data<JqdataClient>,
-    path: web::Path<ticks::Path>,
-    param: web::Query<Param>,
-) -> Result<Json<Response<Vec<Center>>>> {
-    let tick = path.tick.as_ref();
-    let code = &path.code;
-    // 取次级别tick
-    let subtick = match tick {
-        "1d" => "30m",
-        "30m" => "5m",
-        "5m" => "1m",
-        "1m" => {
-            return Err(Error::custom(
-                ErrorKind::BadRequest,
-                "tick 1m cannot have subtrends".to_owned(),
-            ))
-        }
-        _ => {
-            return Err(Error::custom(
-                ErrorKind::BadRequest,
-                format!("invalid tick: {}", tick),
-            ))
-        }
-    };
-    let (start_ts, _) = parse_ts_from_str(&param.start_dt)?;
-    let end_ts = match param.end_dt {
-        Some(ref s) => {
-            let (et, _) = parse_ts_from_str(s)?;
-            et
-        }
-        None => chrono::Local::today().naive_local().and_hms(23, 59, 59),
-    };
-    let stroke_cfg = match param.stroke_cfg {
-        None => StrokeConfig::default(),
-        Some(ref s) => parse_stroke_cfg(s)?,
-    };
-    // 当前级别线段
-    // let segments = {
-    //     let prices = get_stock_tick_prices(&pool, &jq, &tick, &code, start_ts, end_ts).await?;
-    //     let partings = get_tanglism_partings(&prices)?;
-    //     let strokes = get_tanglism_strokes(&partings, tick, stroke_cfg.clone())?;
-    //     get_tanglism_segments(&strokes)?
-    // };
-    // 次级别走势
-    let subtrends = {
-        let prices = get_stock_tick_prices(&pool, &jq, &subtick, &code, start_ts, end_ts).await?;
-        let partings = get_tanglism_partings(&prices)?;
-        let strokes = get_tanglism_strokes(&partings, subtick, stroke_cfg)?;
-        let segments = get_tanglism_segments(&strokes)?;
-        get_tanglism_subtrends(&segments, &strokes, &tick)?
-    };
-    let data = trend::merge_centers(&subtrends, 2);
-    respond_json(Response {
-        code: path.code.to_owned(),
-        tick: path.tick.to_owned(),
-        start_ts,
-        end_ts,
-        data,
-    })
-}
-
-fn get_tanglism_partings(prices: &[ticks::StockPrice]) -> Result<Vec<Parting>> {
+pub fn get_tanglism_partings(prices: &[ticks::StockPrice]) -> Result<Vec<Parting>> {
     let ks: Vec<K> = prices
         .into_iter()
         .map(|p| K {
@@ -321,7 +42,7 @@ fn get_tanglism_partings(prices: &[ticks::StockPrice]) -> Result<Vec<Parting>> {
     ks_to_pts(&ks).map_err(|e| e.into())
 }
 
-fn get_tanglism_strokes(
+pub(crate) fn get_tanglism_strokes(
     pts: &[Parting],
     tick: &str,
     stroke_cfg: StrokeConfig,
@@ -341,11 +62,11 @@ fn get_tanglism_strokes(
     Ok(data)
 }
 
-fn get_tanglism_segments(sks: &[Stroke]) -> Result<Vec<Segment>> {
+pub(crate) fn get_tanglism_segments(sks: &[Stroke]) -> Result<Vec<Segment>> {
     sks_to_sgs(&sks).map_err(Into::into)
 }
 
-fn get_tanglism_subtrends(
+pub(crate) fn get_tanglism_subtrends(
     segments: &[Segment],
     strokes: &[Stroke],
     tick: &str,
@@ -375,6 +96,10 @@ fn get_tanglism_subtrends(
     Ok(data)
 }
 
+pub fn get_tanglism_centers(subtrends: &[SubTrend], base_level: i32) -> Result<Vec<Center>> {
+    Ok(trend::merge_centers(&subtrends, base_level))
+}
+
 #[inline]
 fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
     use tanglism_utils::TradingTimestamps;
@@ -398,7 +123,7 @@ fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
     })
 }
 
-fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
+pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
     if s.is_empty() {
         return Ok(StrokeConfig::default());
     }

@@ -1,35 +1,57 @@
-use crate::handlers::health::api_get_health;
-use crate::handlers::metrics::{api_get_metrics_ema, api_get_metrics_macd};
-use crate::handlers::stock_prices::api_get_stock_tick_prices;
-use crate::handlers::stocks::api_search_keyword_stocks;
-use crate::handlers::tanglism::{
-    api_get_tanglism_centers, api_get_tanglism_partings, api_get_tanglism_segments,
-    api_get_tanglism_strokes, api_get_tanglism_subtrends,
-};
-use crate::handlers::trade_days::api_get_trade_days;
-use actix_files::Files;
-use actix_web::web;
+use crate::handlers::stocks;
+use crate::DbPool;
+use serde_derive::*;
+use std::convert::Infallible;
+use warp::Filter;
 
-pub fn routes(cfg: &mut web::ServiceConfig) {
-    cfg.route("/health", web::get().to(api_get_health))
-        .service(
-            web::scope("/api/v1")
-                .service(api_get_trade_days)
-                .service(api_search_keyword_stocks)
-                .service(api_get_stock_tick_prices)
-                .service(api_get_tanglism_partings)
-                .service(api_get_tanglism_strokes)
-                .service(api_get_tanglism_segments)
-                .service(api_get_tanglism_subtrends)
-                .service(api_get_tanglism_centers)
-                .service(api_get_metrics_ema)
-                .service(api_get_metrics_macd),
-        )
-        .service(
-            web::scope("").default_service(
-                Files::new("", "./static")
-                    .index_file("index.html")
-                    .use_last_modified(true),
-            ),
-        );
+/// API入口
+pub fn api_route(
+    db: DbPool,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    api_get_health().or(api_search_keyword_stocks(db.clone()))
+}
+
+/// 注入db的公共过滤器
+fn with_db(db: DbPool) -> impl Filter<Extract = (DbPool,), Error = Infallible> + Clone {
+    warp::any().map(move || db.clone())
+}
+
+/// 股票关键字搜索参数
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchKeywordStocksParam {
+    pub keyword: String,
+}
+
+fn api_search_keyword_stocks(
+    db: DbPool,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("api" / "keyword-stocks")
+        .and(warp::query::<SearchKeywordStocksParam>())
+        .and(with_db(db.clone()))
+        .and_then(search_keyword_stocks)
+}
+
+pub async fn search_keyword_stocks(
+    param: SearchKeywordStocksParam,
+    db: DbPool,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    match stocks::search_keyword_stocks(db, param.keyword).await {
+        Ok(data) => Ok(warp::reply::json(&data)),
+        Err(err) => Err(warp::reject::custom(err)),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: String,
+}
+
+fn api_get_health() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("api" / "health").and(warp::get()).map(|| {
+        warp::reply::json(&HealthResponse {
+            status: "ok".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+        })
+    })
 }
