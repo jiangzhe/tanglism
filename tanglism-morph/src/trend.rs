@@ -124,6 +124,79 @@ where
     Ok(subtrends)
 }
 
+/// 仅使用次级别走势判断本级别中枢
+/// 
+/// 以下判断逻辑以段指称次级别走势：
+/// 当连续三段重合时，取第一段的前一段，
+/// 若前一段的起点高于候选中枢的区间高点，则中枢必须以向上段作为起始。
+/// 反之，若前一段的起点低于候选中枢的区间高点，则中枢必须以向下段作为起始。
+pub fn merge_centers(subtrends: &[SubTrend], base_level: i32) -> Vec<Center> {
+    if subtrends.len() <= 3 {
+        return Vec::new();
+    }
+    let mut ca = CenterArray::new();
+    // 前三段必不成中枢
+    for (i, s) in subtrends.iter().enumerate().skip(3) {
+        if let Some(lc) = ca.last() {
+            if i - ca.end_idx >= 5 {
+                // 相差5段以上时，不再与前中枢进行比较，而是与第一段的前一段进行比较
+                // 当且仅当前一段的区间包含中枢区间时，才形成中枢
+                if let Some(cc) = maybe_center(subtrends, i, base_level) {
+                    if let Some(prev_s) = subtrends.get(i-3) {
+                        let (prev_min, prev_max) = prev_s.sorted();
+                        if prev_min <= &cc.shared_low && prev_max >= &cc.shared_high {
+                            ca.add_last(i, cc);
+                        }
+                    }
+                }
+            } else if i - ca.end_idx >= 3 {
+                // 与前中枢间隔三段或以上，可直接判断新中枢形成
+                if let Some(cc) = maybe_center(subtrends, i, base_level) {
+                    if cc.shared_low >= lc.shared_high && !cc.upward {
+                        // 上升
+                        ca.add_last(i, cc);
+                    } else if cc.shared_high <= lc.shared_low && cc.upward {
+                        // 下降
+                        ca.add_last(i, cc);
+                    }
+                }
+            } else {
+                // 检查前中枢是否延伸
+                // 使用中枢区间，而不是中枢的最高最低点
+                // 1. 当前走势的终点落在中枢区间内
+                // 2. 当前走势跨越整个中枢区间，即最高点高于中枢区间，最低点低于中枢区间
+                // 3. 且不能跨越走势
+                if s.end_price >= lc.shared_low && s.end_price <= lc.shared_high {
+                    // 当前走势的终点落在中枢区间内，则中枢延伸至走势终点
+                    ca.modify_last(i, |lc| {
+                        lc.end_ts = s.end_ts;
+                        lc.end_price = s.end_price.clone();
+                    });
+                } else {
+                    let (s_min, s_max) = s.sorted();
+                    // 当前走势跨越整个中枢区间，即最高点高于中枢区间，最低点低于中枢区间
+                    // 则中枢延伸至走势起点
+                    if s_min <= &lc.shared_low && s_max >= &lc.shared_high {
+                        ca.modify_last(i, |lc| {
+                            lc.end_ts = s.start_ts;
+                            lc.end_price = s.start_price.clone();
+                        });
+                    }
+                }
+            }
+        } else if let Some(cc) = maybe_center(subtrends, i, base_level) {
+            // 判断新中枢
+            if let Some(prev_s) = subtrends.get(i-3) {
+                let (prev_min, prev_max) = prev_s.sorted();
+                if prev_min <= &cc.shared_low && prev_max >= &cc.shared_high {
+                    ca.add_last(i, cc);
+                }
+            }
+        }
+    }
+    ca.cs
+}
+
 struct CenterArray {
     cs: Vec<Center>,
     end_idx: usize,
@@ -155,144 +228,164 @@ impl CenterArray {
     }
 }
 
-/// 从次级别走势的序列中组合出本级别中枢
-///
-/// 需要考虑与前一个中枢的位置关系
-/// 通过辅助的当前级别线段，避免中枢跨越两个走势
-pub fn centers_with_auxiliary_segments(subtrends: &[SubTrend], base_level: i32, segments: &[Segment]) -> Vec<Center> {
-    if subtrends.len() < 3 {
-        return Vec::new();
-    }
-    let mut ca = CenterArray::new();
-    let mut s1 = &subtrends[0];
-    let mut s2 = &subtrends[1];
-    let mut s3 = &subtrends[2];
-    let mut sg_idx = 0;
-    if let Some(c) = center3(s1, s2, s3, base_level) {
-        let (cross, next_idx) = center_cross_segments(segments, c.start_ts, c.end_ts, sg_idx);
-        if !cross {
-            ca.add_last(2, c);
-        }
-        sg_idx = next_idx;
-        s1 = s2;
-        s2 = s3;
-    }
-    for (i, s) in subtrends.iter().enumerate().skip(3) {
-        s3 = s;
-        // 并不一定可以和前一个中枢相比
-        if let Some(lc) = ca.last() {
-            // 存在前一个中枢
-            if i - ca.end_idx >= 3 {
-                // 当前走势与前中枢差距3段或以上时，可能形成新中枢
-                if let Some(cc) = center3(s1, s2, s3, base_level) {
-                    if s3.start_price > lc.shared_high {
-                        // 上升时，中枢由下上下构成
-                        if !cc.upward {
-                            let (cross, next_idx) = center_cross_segments(segments, cc.start_ts, cc.end_ts, sg_idx);
-                            if !cross {
-                                ca.add_last(i, cc);
-                            }
-                            sg_idx = next_idx;
-                        }
-                    } else if s3.start_price < lc.shared_low {
-                        // 下降时，中枢由上下上构成
-                        if cc.upward {
-                            let (cross, next_idx) = center_cross_segments(segments, cc.start_ts, cc.end_ts, sg_idx);
-                            if !cross {
-                                ca.add_last(i, cc);
-                            }
-                            sg_idx = next_idx;
-                        }
-                    }
-                }
-            } else {
-                // 检查当前中枢是否延伸
-                // 使用中枢区间，而不是中枢的最高最低点
-                // 1. 当前走势的终点落在中枢区间内
-                // 2. 当前走势跨越整个中枢区间，即最高点高于中枢区间，最低点低于中枢区间
-                // 3. 且不能跨越走势
-                let (s3_min, s3_max) = s3.sorted();
-                if (s3.end_price >= lc.shared_low && s3.end_price <= lc.shared_high) 
-                    || (s3_min <= &lc.shared_low && s3_max >= &lc.shared_high) 
-                {
-                    let (cross, next_idx) = center_cross_segments(segments, lc.start_ts, s3.end_ts, sg_idx);
-                    if !cross {
-                        ca.modify_last(i, |lc| {
-                            lc.end_ts = s3.end_ts;
-                            lc.end_price = s3.end_price.clone();
-                        });
-                    }
-                    sg_idx = next_idx;
-                }
-            }
-        } else {
-            // 不存在前一个中枢
-            if let Some(cc) = center3(s1, s2, s3, base_level) {
-                let (cross, next_idx) = center_cross_segments(segments, cc.start_ts, cc.end_ts, sg_idx);
-                if !cross {
-                    // 将可形成的中枢添加进结果集
-                    ca.add_last(i, cc);
-                }
-                sg_idx = next_idx;
-            }
-        }
-        s1 = s2;
-        s2 = s3;
-    }
-    ca.cs
-}
+// /// 从次级别走势的序列中组合出本级别中枢
+// ///
+// /// 需要考虑与前一个中枢的位置关系
+// /// 通过辅助的当前级别线段，避免中枢跨越两个走势
+// pub fn centers_with_auxiliary_segments(subtrends: &[SubTrend], base_level: i32, segments: &[Segment]) -> Vec<Center> {
+//     if subtrends.len() < 3 {
+//         return Vec::new();
+//     }
+//     let mut ca = CenterArray::new();
+//     let mut s1 = &subtrends[0];
+//     let mut s2 = &subtrends[1];
+//     let mut s3 = &subtrends[2];
+//     let mut sg_idx = 0;
+//     if let Some(c) = center3(s1, s2, s3, base_level) {
+//         let (cross, next_idx) = center_cross_segments(segments, c.start_ts, c.end_ts, sg_idx);
+//         if !cross {
+//             ca.add_last(2, c);
+//         }
+//         sg_idx = next_idx;
+//         s1 = s2;
+//         s2 = s3;
+//     }
+//     for (i, s) in subtrends.iter().enumerate().skip(3) {
+//         s3 = s;
+//         // 并不一定可以和前一个中枢相比
+//         if let Some(lc) = ca.last() {
+//             // 存在前一个中枢
+//             if i - ca.end_idx >= 3 {
+//                 // 当前走势与前中枢差距3段或以上时，可能形成新中枢
+//                 if let Some(cc) = center3(s1, s2, s3, base_level) {
+//                     // 三次级别走势形成中枢
+//                     let (cross, next_idx) = center_cross_segments(segments, cc.start_ts, cc.end_ts, sg_idx);
+//                     if !cross {
+//                         if sg_idx < segments.len() && segments[sg_idx].start_pt.extremum_ts <= lc.start_ts {  // 与前中枢在同一段
+//                             if cc.shared_low >= lc.shared_high && !cc.upward {
+//                                 // 上升
+//                                 ca.add_last(i, cc);
+//                             } else if cc.shared_high <= lc.shared_low && cc.upward {
+//                                 // 下降
+//                                 ca.add_last(i, cc);
+//                             }
+//                         } else if sg_idx < segments.len() {  // 与前中枢不在同一段
+//                             if cc.shared_low >= segments[sg_idx].start_pt.extremum_price && !cc.upward {
+//                                 // 上升
+//                                 ca.add_last(i, cc);
+//                             } else if cc.shared_high <= segments[sg_idx].start_pt.extremum_price && cc.upward {
+//                                 // 下降
+//                                 ca.add_last(i, cc);
+//                             }
+//                         }
+//                     }
+//                     sg_idx = next_idx;
+//                 }
+//             } else {
+//                 // 检查当前中枢是否延伸
+//                 // 使用中枢区间，而不是中枢的最高最低点
+//                 // 1. 当前走势的终点落在中枢区间内
+//                 // 2. 当前走势跨越整个中枢区间，即最高点高于中枢区间，最低点低于中枢区间
+//                 // 3. 且不能跨越走势
+//                 let (s3_min, s3_max) = s3.sorted();
+//                 if (s3.end_price >= lc.shared_low && s3.end_price <= lc.shared_high) 
+//                     || (s3_min <= &lc.shared_low && s3_max >= &lc.shared_high) 
+//                 {
+//                     let (cross, next_idx) = center_cross_segments(segments, lc.start_ts, s3.end_ts, sg_idx);
+//                     if !cross {
+//                         ca.modify_last(i, |lc| {
+//                             lc.end_ts = s3.end_ts;
+//                             lc.end_price = s3.end_price.clone();
+//                         });
+//                     }
+//                     sg_idx = next_idx;
+//                 }
+//             }
+//         } else {
+//             // 不存在前一个中枢
+//             if let Some(cc) = center3(s1, s2, s3, base_level) {
+//                 let (cross, next_idx) = center_cross_segments(segments, cc.start_ts, cc.end_ts, sg_idx);
+//                 if !cross {
+//                     if sg_idx < segments.len() {
+//                         if cc.shared_low >= segments[sg_idx].start_pt.extremum_price && !cc.upward {
+//                             // 上升
+//                             ca.add_last(i, cc);
+//                         } else if cc.shared_high <= segments[sg_idx].start_pt.extremum_price && cc.upward {
+//                             // 下降
+//                             ca.add_last(i, cc);
+//                         }
+//                     } else {
+//                         // 无辅助线段，将可形成的中枢添加进结果集
+//                         ca.add_last(i, cc);
+//                     }
+//                 }
+//                 sg_idx = next_idx;
+//             }
+//         }
+//         s1 = s2;
+//         s2 = s3;
+//     }
+//     ca.cs
+// }
 
-// 判断中枢是否跨越两条线段：即前一线段的终点和后一线段的起点都在中枢内
-// 返回是否跨越，以及中枢的终点落在的线段的索引
-// 对所有跨越的情况都必须保持返回的索引不变
-#[inline]
-fn center_cross_segments(segments: &[Segment], c_start: NaiveDateTime, c_end: NaiveDateTime, start_idx: usize) -> (bool, usize) {
-    if start_idx == segments.len() {  // 无线段
-        return (false, start_idx);
-    }
-    let start_idx = if segments[start_idx].end_pt.extremum_ts <= c_start { // 当前线段的终点在中枢前
-        // 将索引后移
-        start_idx + 1
-    } else {
-        start_idx
-    };
-    let sg = &segments[start_idx];
+// // 判断中枢是否跨越两条线段：即前一线段的终点和后一线段的起点都在中枢内
+// // 返回是否跨越，以及中枢的终点落在的线段的索引
+// // 对所有跨越的情况都必须保持返回的索引不变
+// #[inline]
+// fn center_cross_segments(segments: &[Segment], c_start: NaiveDateTime, c_end: NaiveDateTime, start_idx: usize) -> (bool, usize) {
+//     if start_idx == segments.len() {  // 无线段
+//         return (false, start_idx);
+//     }
+//     let start_idx = if segments[start_idx].end_pt.extremum_ts <= c_start { // 当前线段的终点在中枢前
+//         // 将索引后移
+//         start_idx + 1
+//     } else {
+//         start_idx
+//     };
+//     let sg = &segments[start_idx];
 
-    if sg.start_pt.extremum_ts <= c_start {  // 当前线段的起点在中枢前
-        if sg.end_pt.extremum_ts <= c_end {  // 当前线段的终点在中枢内
-            if start_idx < segments.len() - 1 {  // 存在后一条线段
-                let post_sg = &segments[start_idx+1];
-                if post_sg.start_pt.extremum_ts < c_end {  // 后一条线段起点在中枢内，不与中枢终点重合
-                    // 对所有跨越的情况都必须保持返回的start_idx不变
-                    return (true, start_idx);
-                } 
-                // 后一条线段起点在中枢后
-                return (false, start_idx);
-            }
-            // 不存在后一条线段
-            return (false, start_idx + 1);
-        }
-        // 当前线段终点在中枢后
-        return (false, start_idx);
-    } else if sg.start_pt.extremum_ts < c_end {  // 当前线段的起点在中枢内
-        if sg.end_pt.extremum_ts <= c_end {  // 当前线段的终点在中枢内
-            if start_idx < segments.len() - 1 {  // 存在后一条线段
-                let post_sg = &segments[start_idx+1];
-                if post_sg.start_pt.extremum_ts < c_end {  // 后一条线段起点在中枢内，不与中枢终点重合
-                    // 对所有跨越的情况都必须保持返回的start_idx不变
-                    return (true, start_idx);
-                }
-                // 后一条线段起点在中枢后
-                return (false, start_idx);
-            }
-            // 不存在后一条线段
-            return (false, start_idx + 1);
-        }
-        // 当前线段终点在中枢后
-        return (false, start_idx);
+//     if sg.start_pt.extremum_ts <= c_start {  // 当前线段的起点在中枢前
+//         if sg.end_pt.extremum_ts <= c_end {  // 当前线段的终点在中枢内
+//             if start_idx < segments.len() - 1 {  // 存在后一条线段
+//                 let post_sg = &segments[start_idx+1];
+//                 if post_sg.start_pt.extremum_ts < c_end {  // 后一条线段起点在中枢内，不与中枢终点重合
+//                     // 对所有跨越的情况都必须保持返回的start_idx不变
+//                     return (true, start_idx);
+//                 } 
+//                 // 后一条线段起点在中枢后
+//                 return (false, start_idx);
+//             }
+//             // 不存在后一条线段
+//             return (false, start_idx + 1);
+//         }
+//         // 当前线段终点在中枢后
+//         return (false, start_idx);
+//     } else if sg.start_pt.extremum_ts < c_end {  // 当前线段的起点在中枢内
+//         if sg.end_pt.extremum_ts <= c_end {  // 当前线段的终点在中枢内
+//             if start_idx < segments.len() - 1 {  // 存在后一条线段
+//                 let post_sg = &segments[start_idx+1];
+//                 if post_sg.start_pt.extremum_ts < c_end {  // 后一条线段起点在中枢内，不与中枢终点重合
+//                     // 对所有跨越的情况都必须保持返回的start_idx不变
+//                     return (true, start_idx);
+//                 }
+//                 // 后一条线段起点在中枢后
+//                 return (false, start_idx);
+//             }
+//             // 不存在后一条线段
+//             return (false, start_idx + 1);
+//         }
+//         // 当前线段终点在中枢后
+//         return (false, start_idx);
+//     }
+//     // 当前线段的起点在中枢后
+//     (false, start_idx)
+// }
+
+fn maybe_center(subtrends: &[SubTrend], idx: usize, base_level: i32) -> Option<Center> {
+    if idx < 3 {
+        return None;
     }
-    // 当前线段的起点在中枢后
-    (false, start_idx)
+    center3(&subtrends[idx-2], &subtrends[idx-1], &subtrends[idx], base_level)
 }
 
 fn center3(s1: &SubTrend, s2: &SubTrend, s3: &SubTrend, base_level: i32) -> Option<Center> {
@@ -433,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn test_centers_single() {
+    fn test_centers_none() {
         let sts = vec![
             SubTrend {
                 start_ts: new_ts("2020-02-10 15:00"),
@@ -457,7 +550,79 @@ mod tests {
                 level: 1,
             },
         ];
-        let cs = centers_with_auxiliary_segments(&sts, 1, &vec![]);
+        let cs = merge_centers(&sts, 1);
+        assert_eq!(0, cs.len());
+    }
+
+    #[test]
+    fn test_centers_none_with_no_overlap() {
+        let sts = vec![
+            SubTrend {
+                start_ts: new_ts("2020-02-07 15:00"),
+                start_price: BigDecimal::from(10.2),
+                end_ts: new_ts("2020-02-10 15:00"),
+                end_price: BigDecimal::from(10),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-10 15:00"),
+                start_price: BigDecimal::from(10),
+                end_ts: new_ts("2020-02-11 15:00"),
+                end_price: BigDecimal::from(11),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-11 15:00"),
+                start_price: BigDecimal::from(11),
+                end_ts: new_ts("2020-02-12 15:00"),
+                end_price: BigDecimal::from(10.5),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-12 15:00"),
+                start_price: BigDecimal::from(10.5),
+                end_ts: new_ts("2020-02-13 15:00"),
+                end_price: BigDecimal::from(11.5),
+                level: 1,
+            },
+        ];
+        let cs = merge_centers(&sts, 1);
+        assert_eq!(0, cs.len());
+    }
+
+    #[test]
+    fn test_centers_single() {
+        let sts = vec![
+            SubTrend {
+                start_ts: new_ts("2020-02-07 15:00"),
+                start_price: BigDecimal::from(13),
+                end_ts: new_ts("2020-02-10 15:00"),
+                end_price: BigDecimal::from(10),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-10 15:00"),
+                start_price: BigDecimal::from(10),
+                end_ts: new_ts("2020-02-11 15:00"),
+                end_price: BigDecimal::from(11),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-11 15:00"),
+                start_price: BigDecimal::from(11),
+                end_ts: new_ts("2020-02-12 15:00"),
+                end_price: BigDecimal::from(10.5),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-12 15:00"),
+                start_price: BigDecimal::from(10.5),
+                end_ts: new_ts("2020-02-13 15:00"),
+                end_price: BigDecimal::from(11.5),
+                level: 1,
+            },
+        ];
+        let cs = merge_centers(&sts, 1);
         assert_eq!(1, cs.len());
         assert_eq!(BigDecimal::from(10.5), cs[0].shared_low);
         assert_eq!(BigDecimal::from(11), cs[0].shared_high);
@@ -466,6 +631,13 @@ mod tests {
     #[test]
     fn test_centers_double() {
         let sts = vec![
+            SubTrend {
+                start_ts: new_ts("2020-02-07 15:00"),
+                start_price: BigDecimal::from(13),
+                end_ts: new_ts("2020-02-10 15:00"),
+                end_price: BigDecimal::from(10),
+                level: 1,
+            },
             SubTrend {
                 start_ts: new_ts("2020-02-10 15:00"),
                 start_price: BigDecimal::from(10),
@@ -516,7 +688,7 @@ mod tests {
                 level: 1,
             },
         ];
-        let cs = centers_with_auxiliary_segments(&sts, 1, &vec![]);
+        let cs = merge_centers(&sts, 1);
         assert_eq!(2, cs.len());
         assert_eq!(new_ts("2020-02-18 15:00"), cs[1].start_ts);
         assert_eq!(BigDecimal::from(8), cs[1].start_price);
@@ -532,6 +704,13 @@ mod tests {
     fn test_centers_extension() {
         let sts = vec![
             SubTrend {
+                start_ts: new_ts("2020-02-07 15:00"),
+                start_price: BigDecimal::from(13),
+                end_ts: new_ts("2020-02-10 15:00"),
+                end_price: BigDecimal::from(10),
+                level: 1,
+            },
+            SubTrend {
                 start_ts: new_ts("2020-02-10 15:00"),
                 start_price: BigDecimal::from(10),
                 end_ts: new_ts("2020-02-11 15:00"),
@@ -556,19 +735,26 @@ mod tests {
                 start_ts: new_ts("2020-02-13 15:00"),
                 start_price: BigDecimal::from(11.5),
                 end_ts: new_ts("2020-02-18 15:00"),
-                end_price: BigDecimal::from(8),
+                end_price: BigDecimal::from(10.8),
                 level: 1,
             },
         ];
-        let cs = centers_with_auxiliary_segments(&sts, 1, &vec![]);
+        let cs = merge_centers(&sts, 1);
         assert_eq!(1, cs.len());
         assert_eq!(new_ts("2020-02-10 15:00"), cs[0].start_ts);
         assert_eq!(new_ts("2020-02-18 15:00"), cs[0].end_ts);
     }
 
     #[test]
-    fn test_centers_one_segment() {
+    fn test_centers_extension_through() {
         let sts = vec![
+            SubTrend {
+                start_ts: new_ts("2020-02-07 15:00"),
+                start_price: BigDecimal::from(13),
+                end_ts: new_ts("2020-02-10 15:00"),
+                end_price: BigDecimal::from(10),
+                level: 1,
+            },
             SubTrend {
                 start_ts: new_ts("2020-02-10 15:00"),
                 start_price: BigDecimal::from(10),
@@ -594,122 +780,167 @@ mod tests {
                 start_ts: new_ts("2020-02-13 15:00"),
                 start_price: BigDecimal::from(11.5),
                 end_ts: new_ts("2020-02-18 15:00"),
-                end_price: BigDecimal::from(8),
+                end_price: BigDecimal::from(9),
+                level: 1,
+            },
+            SubTrend {
+                start_ts: new_ts("2020-02-18 15:00"),
+                start_price: BigDecimal::from(9),
+                end_ts: new_ts("2020-02-19 15:00"),
+                end_price: BigDecimal::from(12),
                 level: 1,
             },
         ];
-        let cs = centers_with_auxiliary_segments(&sts, 1, &vec![
-            Segment{
-                start_pt: Parting{
-                    start_ts: new_ts("2020-02-09 15:00"),
-                    end_ts: new_ts("2020-02-11 15:00"),
-                    extremum_ts: new_ts("2020-02-10 15:00"),
-                    extremum_price: BigDecimal::from(10),
-                    n: 3,
-                    top: false,
-                    left_gap: None,
-                    right_gap: None,
-                },
-                end_pt: Parting{
-                    start_ts: new_ts("2020-02-12 15:00"),
-                    end_ts: new_ts("2020-02-18 15:00"),
-                    extremum_ts: new_ts("2020-02-13 15:00"),
-                    extremum_price: BigDecimal::from(11.5),
-                    n: 3,
-                    top: true,
-                    left_gap: None,
-                    right_gap: None,
-                },
-            },
-        ]);
+        let cs = merge_centers(&sts, 1);
         assert_eq!(1, cs.len());
         assert_eq!(new_ts("2020-02-10 15:00"), cs[0].start_ts);
         assert_eq!(new_ts("2020-02-18 15:00"), cs[0].end_ts);
     }
 
-    #[test]
-    fn test_centers_two_segments() {
-        let sts = vec![
-            SubTrend {
-                start_ts: new_ts("2020-02-10 15:00"),
-                start_price: BigDecimal::from(10),
-                end_ts: new_ts("2020-02-11 15:00"),
-                end_price: BigDecimal::from(11),
-                level: 1,
-            },
-            SubTrend {
-                start_ts: new_ts("2020-02-11 15:00"),
-                start_price: BigDecimal::from(11),
-                end_ts: new_ts("2020-02-12 15:00"),
-                end_price: BigDecimal::from(10.5),
-                level: 1,
-            },
-            SubTrend {
-                start_ts: new_ts("2020-02-12 15:00"),
-                start_price: BigDecimal::from(10.5),
-                end_ts: new_ts("2020-02-13 15:00"),
-                end_price: BigDecimal::from(11.5),
-                level: 1,
-            },
-            SubTrend {
-                start_ts: new_ts("2020-02-13 15:00"),
-                start_price: BigDecimal::from(11.5),
-                end_ts: new_ts("2020-02-18 15:00"),
-                end_price: BigDecimal::from(8),
-                level: 1,
-            },
-        ];
-        let cs = centers_with_auxiliary_segments(&sts, 1, &vec![
-            Segment{
-                start_pt: Parting{
-                    start_ts: new_ts("2020-02-09 15:00"),
-                    end_ts: new_ts("2020-02-11 15:00"),
-                    extremum_ts: new_ts("2020-02-10 15:00"),
-                    extremum_price: BigDecimal::from(10),
-                    n: 3,
-                    top: false,
-                    left_gap: None,
-                    right_gap: None,
-                },
-                end_pt: Parting{
-                    start_ts: new_ts("2020-02-12 15:00"),
-                    end_ts: new_ts("2020-02-18 15:00"),
-                    extremum_ts: new_ts("2020-02-13 15:00"),
-                    extremum_price: BigDecimal::from(11.5),
-                    n: 3,
-                    top: true,
-                    left_gap: None,
-                    right_gap: None,
-                },
-            },
-            Segment{
-                start_pt: Parting{
-                    start_ts: new_ts("2020-02-12 15:00"),
-                    end_ts: new_ts("2020-02-18 15:00"),
-                    extremum_ts: new_ts("2020-02-13 15:00"),
-                    extremum_price: BigDecimal::from(11.5),
-                    n: 3,
-                    top: true,
-                    left_gap: None,
-                    right_gap: None,
-                },
-                end_pt: Parting{
-                    start_ts: new_ts("2020-02-20 15:00"),
-                    end_ts: new_ts("2020-02-22 15:00"),
-                    extremum_ts: new_ts("2020-02-21 15:00"),
-                    extremum_price: BigDecimal::from(7.5),
-                    n: 3,
-                    top: false,
-                    left_gap: None,
-                    right_gap: None,
-                },
-            },
+    // #[test]
+    // fn test_centers_one_segment() {
+    //     let sts = vec![
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-10 15:00"),
+    //             start_price: BigDecimal::from(10),
+    //             end_ts: new_ts("2020-02-11 15:00"),
+    //             end_price: BigDecimal::from(11),
+    //             level: 1,
+    //         },
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-11 15:00"),
+    //             start_price: BigDecimal::from(11),
+    //             end_ts: new_ts("2020-02-12 15:00"),
+    //             end_price: BigDecimal::from(10.5),
+    //             level: 1,
+    //         },
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-12 15:00"),
+    //             start_price: BigDecimal::from(10.5),
+    //             end_ts: new_ts("2020-02-13 15:00"),
+    //             end_price: BigDecimal::from(11.5),
+    //             level: 1,
+    //         },
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-13 15:00"),
+    //             start_price: BigDecimal::from(11.5),
+    //             end_ts: new_ts("2020-02-18 15:00"),
+    //             end_price: BigDecimal::from(8),
+    //             level: 1,
+    //         },
+    //     ];
+    //     let cs = centers_with_auxiliary_segments(&sts, 1, &vec![
+    //         Segment{
+    //             start_pt: Parting{
+    //                 start_ts: new_ts("2020-02-09 15:00"),
+    //                 end_ts: new_ts("2020-02-11 15:00"),
+    //                 extremum_ts: new_ts("2020-02-10 15:00"),
+    //                 extremum_price: BigDecimal::from(10),
+    //                 n: 3,
+    //                 top: false,
+    //                 left_gap: None,
+    //                 right_gap: None,
+    //             },
+    //             end_pt: Parting{
+    //                 start_ts: new_ts("2020-02-12 15:00"),
+    //                 end_ts: new_ts("2020-02-18 15:00"),
+    //                 extremum_ts: new_ts("2020-02-13 15:00"),
+    //                 extremum_price: BigDecimal::from(11.5),
+    //                 n: 3,
+    //                 top: true,
+    //                 left_gap: None,
+    //                 right_gap: None,
+    //             },
+    //         },
+    //     ]);
+    //     assert_eq!(1, cs.len());
+    //     assert_eq!(new_ts("2020-02-10 15:00"), cs[0].start_ts);
+    //     assert_eq!(new_ts("2020-02-18 15:00"), cs[0].end_ts);
+    // }
+
+    // #[test]
+    // fn test_centers_two_segments() {
+    //     let sts = vec![
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-10 15:00"),
+    //             start_price: BigDecimal::from(10),
+    //             end_ts: new_ts("2020-02-11 15:00"),
+    //             end_price: BigDecimal::from(11),
+    //             level: 1,
+    //         },
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-11 15:00"),
+    //             start_price: BigDecimal::from(11),
+    //             end_ts: new_ts("2020-02-12 15:00"),
+    //             end_price: BigDecimal::from(10.5),
+    //             level: 1,
+    //         },
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-12 15:00"),
+    //             start_price: BigDecimal::from(10.5),
+    //             end_ts: new_ts("2020-02-13 15:00"),
+    //             end_price: BigDecimal::from(11.5),
+    //             level: 1,
+    //         },
+    //         SubTrend {
+    //             start_ts: new_ts("2020-02-13 15:00"),
+    //             start_price: BigDecimal::from(11.5),
+    //             end_ts: new_ts("2020-02-18 15:00"),
+    //             end_price: BigDecimal::from(8),
+    //             level: 1,
+    //         },
+    //     ];
+    //     let cs = centers_with_auxiliary_segments(&sts, 1, &vec![
+    //         Segment{
+    //             start_pt: Parting{
+    //                 start_ts: new_ts("2020-02-09 15:00"),
+    //                 end_ts: new_ts("2020-02-11 15:00"),
+    //                 extremum_ts: new_ts("2020-02-10 15:00"),
+    //                 extremum_price: BigDecimal::from(10),
+    //                 n: 3,
+    //                 top: false,
+    //                 left_gap: None,
+    //                 right_gap: None,
+    //             },
+    //             end_pt: Parting{
+    //                 start_ts: new_ts("2020-02-12 15:00"),
+    //                 end_ts: new_ts("2020-02-18 15:00"),
+    //                 extremum_ts: new_ts("2020-02-13 15:00"),
+    //                 extremum_price: BigDecimal::from(11.5),
+    //                 n: 3,
+    //                 top: true,
+    //                 left_gap: None,
+    //                 right_gap: None,
+    //             },
+    //         },
+    //         Segment{
+    //             start_pt: Parting{
+    //                 start_ts: new_ts("2020-02-12 15:00"),
+    //                 end_ts: new_ts("2020-02-18 15:00"),
+    //                 extremum_ts: new_ts("2020-02-13 15:00"),
+    //                 extremum_price: BigDecimal::from(11.5),
+    //                 n: 3,
+    //                 top: true,
+    //                 left_gap: None,
+    //                 right_gap: None,
+    //             },
+    //             end_pt: Parting{
+    //                 start_ts: new_ts("2020-02-20 15:00"),
+    //                 end_ts: new_ts("2020-02-22 15:00"),
+    //                 extremum_ts: new_ts("2020-02-21 15:00"),
+    //                 extremum_price: BigDecimal::from(7.5),
+    //                 n: 3,
+    //                 top: false,
+    //                 left_gap: None,
+    //                 right_gap: None,
+    //             },
+    //         },
             
-        ]);
-        assert_eq!(1, cs.len());
-        assert_eq!(new_ts("2020-02-10 15:00"), cs[0].start_ts);
-        assert_eq!(new_ts("2020-02-13 15:00"), cs[0].end_ts);
-    }
+    //     ]);
+    //     assert_eq!(1, cs.len());
+    //     assert_eq!(new_ts("2020-02-10 15:00"), cs[0].start_ts);
+    //     assert_eq!(new_ts("2020-02-13 15:00"), cs[0].end_ts);
+    // }
 
     fn new_ts(s: &str) -> NaiveDateTime {
         NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap()
