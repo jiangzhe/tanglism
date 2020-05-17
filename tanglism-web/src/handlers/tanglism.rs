@@ -10,7 +10,7 @@ use serde::Serialize;
 use serde_derive::*;
 use std::str::FromStr;
 use tanglism_morph::{
-    centers_with_auxiliary_segments, ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig,
+    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig,
     StrokeJudge, StrokeShaper, K,
 };
 use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend};
@@ -285,12 +285,12 @@ pub async fn api_get_tanglism_centers(
         Some(ref s) => parse_stroke_cfg(s)?,
     };
     // 当前级别线段
-    let segments = {
-        let prices = get_stock_tick_prices(&pool, &jq, &tick, &code, start_ts, end_ts).await?;
-        let partings = get_tanglism_partings(&prices)?;
-        let strokes = get_tanglism_strokes(&partings, tick, stroke_cfg.clone())?;
-        get_tanglism_segments(&strokes)?
-    };
+    // let segments = {
+    //     let prices = get_stock_tick_prices(&pool, &jq, &tick, &code, start_ts, end_ts).await?;
+    //     let partings = get_tanglism_partings(&prices)?;
+    //     let strokes = get_tanglism_strokes(&partings, tick, stroke_cfg.clone())?;
+    //     get_tanglism_segments(&strokes)?
+    // };
     // 次级别走势
     let subtrends = {
         let prices = get_stock_tick_prices(&pool, &jq, &subtick, &code, start_ts, end_ts).await?;
@@ -299,7 +299,7 @@ pub async fn api_get_tanglism_centers(
         let segments = get_tanglism_segments(&strokes)?;
         get_tanglism_subtrends(&segments, &strokes, &tick)?
     };
-    let data = centers_with_auxiliary_segments(&subtrends, 2, &segments);
+    let data = trend::merge_centers(&subtrends, 2);
     respond_json(Response {
         code: path.code.to_owned(),
         tick: path.tick.to_owned(),
