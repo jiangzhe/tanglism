@@ -32,7 +32,7 @@ pub struct Param {
 
 pub fn get_tanglism_partings(prices: &[ticks::StockPrice]) -> Result<Vec<Parting>> {
     let ks: Vec<K> = prices
-        .into_iter()
+        .iter()
         .map(|p| K {
             ts: p.ts,
             low: p.low.clone(),
@@ -53,7 +53,8 @@ pub(crate) fn get_tanglism_strokes(
         "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, stroke_cfg).run()?,
         "1d" => StrokeShaper::new(&pts, &**LOCAL_DATES, stroke_cfg).run()?,
         _ => {
-            return Err(Error::custom(
+            return Err(
+                Error::custom(
                 ErrorKind::BadRequest,
                 format!("invalid tick: {}", &tick),
             ))
@@ -133,7 +134,7 @@ pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
     let mut backtrack = StrokeBacktrack::None;
     for c in &cfg_strs {
         if c.starts_with("indep_k") {
-            let is: Vec<&str> = c.split(":").collect();
+            let is: Vec<&str> = c.split(':').collect();
             if is.len() == 2 && is[1] == "false" {
                 indep_k = false;
             }
@@ -158,7 +159,7 @@ pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
                 judge = StrokeJudge::GapRatio(ratio);
             }
         } else if c.starts_with("backtrack") {
-            let bs: Vec<&str> = c.split(":").collect();
+            let bs: Vec<&str> = c.split(':').collect();
             if bs.len() < 2 {
                 backtrack = StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap());
             } else {

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 #[macro_use]
 extern crate diesel;
 
@@ -19,6 +21,7 @@ use warp::Filter;
 
 pub use errors::{Error, ErrorKind};
 pub type Result<T> = std::result::Result<T, Error>;
+
 // use r2d2 to manage Postgres connections
 type DbPool = r2d2::Pool<ConnectionManager<PgConnection>>;
 

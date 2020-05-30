@@ -7,18 +7,6 @@ use jqdata::{GetPricePeriod, JqdataClient};
 use serde_derive::*;
 use tanglism_utils::{end_of_day_str, start_of_day_str};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Path {
-    pub code: String,
-    pub tick: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Param {
-    pub start_dt: String,
-    pub end_dt: Option<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Queryable, Clone)]
 pub struct StockPrice {
     pub ts: NaiveDateTime,

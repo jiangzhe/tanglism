@@ -286,7 +286,6 @@ mod tests {
             new_k("2020-02-01 10:03", 10.25, 10.15),
             new_k("2020-02-01 10:04", 10.30, 10.20),
         ];
-        // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
         let r = ks_to_pts(&ks)?;
         assert_eq!(0, r.len());
         Ok(())
@@ -321,8 +320,6 @@ mod tests {
             new_k("2020-02-01 10:04", 10.20, 10.00),
         ];
         let r = ks_to_pts(&ks)?;
-        // let json = serde_json::to_string_pretty(&shaper.parting_seq())?;
-        // panic!(json);
         assert_eq!(1, r.len());
         assert_eq!(new_ts("2020-02-01 10:04"), r[0].end_ts);
         Ok(())
