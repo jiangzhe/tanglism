@@ -78,7 +78,7 @@ pub struct SubTrend {
 
 impl SubTrend {
     fn sorted(&self) -> (&BigDecimal, &BigDecimal) {
-        if &self.start_price < &self.end_price {
+        if self.start_price < self.end_price {
             (&self.start_price, &self.end_price)
         } else {
             (&self.end_price, &self.start_price)
@@ -152,11 +152,7 @@ pub fn merge_centers(subtrends: &[SubTrend], base_level: i32) -> Vec<Center> {
             } else if i - ca.end_idx >= 3 {
                 // 与前中枢间隔三段或以上，可直接判断新中枢形成
                 if let Some(cc) = maybe_center(subtrends, i, base_level) {
-                    if cc.shared_low >= lc.shared_high && !cc.upward {
-                        // 上升
-                        ca.add_last(i, cc);
-                    } else if cc.shared_high <= lc.shared_low && cc.upward {
-                        // 下降
+                    if (cc.shared_low >= lc.shared_high && !cc.upward) || (cc.shared_high <= lc.shared_low && cc.upward) {
                         ca.add_last(i, cc);
                     }
                 }
@@ -231,159 +227,6 @@ impl CenterArray {
     }
 }
 
-// /// 从次级别走势的序列中组合出本级别中枢
-// ///
-// /// 需要考虑与前一个中枢的位置关系
-// /// 通过辅助的当前级别线段，避免中枢跨越两个走势
-// pub fn centers_with_auxiliary_segments(subtrends: &[SubTrend], base_level: i32, segments: &[Segment]) -> Vec<Center> {
-//     if subtrends.len() < 3 {
-//         return Vec::new();
-//     }
-//     let mut ca = CenterArray::new();
-//     let mut s1 = &subtrends[0];
-//     let mut s2 = &subtrends[1];
-//     let mut s3 = &subtrends[2];
-//     let mut sg_idx = 0;
-//     if let Some(c) = center3(s1, s2, s3, base_level) {
-//         let (cross, next_idx) = center_cross_segments(segments, c.start_ts, c.end_ts, sg_idx);
-//         if !cross {
-//             ca.add_last(2, c);
-//         }
-//         sg_idx = next_idx;
-//         s1 = s2;
-//         s2 = s3;
-//     }
-//     for (i, s) in subtrends.iter().enumerate().skip(3) {
-//         s3 = s;
-//         // 并不一定可以和前一个中枢相比
-//         if let Some(lc) = ca.last() {
-//             // 存在前一个中枢
-//             if i - ca.end_idx >= 3 {
-//                 // 当前走势与前中枢差距3段或以上时，可能形成新中枢
-//                 if let Some(cc) = center3(s1, s2, s3, base_level) {
-//                     // 三次级别走势形成中枢
-//                     let (cross, next_idx) = center_cross_segments(segments, cc.start_ts, cc.end_ts, sg_idx);
-//                     if !cross {
-//                         if sg_idx < segments.len() && segments[sg_idx].start_pt.extremum_ts <= lc.start_ts {  // 与前中枢在同一段
-//                             if cc.shared_low >= lc.shared_high && !cc.upward {
-//                                 // 上升
-//                                 ca.add_last(i, cc);
-//                             } else if cc.shared_high <= lc.shared_low && cc.upward {
-//                                 // 下降
-//                                 ca.add_last(i, cc);
-//                             }
-//                         } else if sg_idx < segments.len() {  // 与前中枢不在同一段
-//                             if cc.shared_low >= segments[sg_idx].start_pt.extremum_price && !cc.upward {
-//                                 // 上升
-//                                 ca.add_last(i, cc);
-//                             } else if cc.shared_high <= segments[sg_idx].start_pt.extremum_price && cc.upward {
-//                                 // 下降
-//                                 ca.add_last(i, cc);
-//                             }
-//                         }
-//                     }
-//                     sg_idx = next_idx;
-//                 }
-//             } else {
-//                 // 检查当前中枢是否延伸
-//                 // 使用中枢区间，而不是中枢的最高最低点
-//                 // 1. 当前走势的终点落在中枢区间内
-//                 // 2. 当前走势跨越整个中枢区间，即最高点高于中枢区间，最低点低于中枢区间
-//                 // 3. 且不能跨越走势
-//                 let (s3_min, s3_max) = s3.sorted();
-//                 if (s3.end_price >= lc.shared_low && s3.end_price <= lc.shared_high)
-//                     || (s3_min <= &lc.shared_low && s3_max >= &lc.shared_high)
-//                 {
-//                     let (cross, next_idx) = center_cross_segments(segments, lc.start_ts, s3.end_ts, sg_idx);
-//                     if !cross {
-//                         ca.modify_last(i, |lc| {
-//                             lc.end_ts = s3.end_ts;
-//                             lc.end_price = s3.end_price.clone();
-//                         });
-//                     }
-//                     sg_idx = next_idx;
-//                 }
-//             }
-//         } else {
-//             // 不存在前一个中枢
-//             if let Some(cc) = center3(s1, s2, s3, base_level) {
-//                 let (cross, next_idx) = center_cross_segments(segments, cc.start_ts, cc.end_ts, sg_idx);
-//                 if !cross {
-//                     if sg_idx < segments.len() {
-//                         if cc.shared_low >= segments[sg_idx].start_pt.extremum_price && !cc.upward {
-//                             // 上升
-//                             ca.add_last(i, cc);
-//                         } else if cc.shared_high <= segments[sg_idx].start_pt.extremum_price && cc.upward {
-//                             // 下降
-//                             ca.add_last(i, cc);
-//                         }
-//                     } else {
-//                         // 无辅助线段，将可形成的中枢添加进结果集
-//                         ca.add_last(i, cc);
-//                     }
-//                 }
-//                 sg_idx = next_idx;
-//             }
-//         }
-//         s1 = s2;
-//         s2 = s3;
-//     }
-//     ca.cs
-// }
-
-// // 判断中枢是否跨越两条线段：即前一线段的终点和后一线段的起点都在中枢内
-// // 返回是否跨越，以及中枢的终点落在的线段的索引
-// // 对所有跨越的情况都必须保持返回的索引不变
-// #[inline]
-// fn center_cross_segments(segments: &[Segment], c_start: NaiveDateTime, c_end: NaiveDateTime, start_idx: usize) -> (bool, usize) {
-//     if start_idx == segments.len() {  // 无线段
-//         return (false, start_idx);
-//     }
-//     let start_idx = if segments[start_idx].end_pt.extremum_ts <= c_start { // 当前线段的终点在中枢前
-//         // 将索引后移
-//         start_idx + 1
-//     } else {
-//         start_idx
-//     };
-//     let sg = &segments[start_idx];
-
-//     if sg.start_pt.extremum_ts <= c_start {  // 当前线段的起点在中枢前
-//         if sg.end_pt.extremum_ts <= c_end {  // 当前线段的终点在中枢内
-//             if start_idx < segments.len() - 1 {  // 存在后一条线段
-//                 let post_sg = &segments[start_idx+1];
-//                 if post_sg.start_pt.extremum_ts < c_end {  // 后一条线段起点在中枢内，不与中枢终点重合
-//                     // 对所有跨越的情况都必须保持返回的start_idx不变
-//                     return (true, start_idx);
-//                 }
-//                 // 后一条线段起点在中枢后
-//                 return (false, start_idx);
-//             }
-//             // 不存在后一条线段
-//             return (false, start_idx + 1);
-//         }
-//         // 当前线段终点在中枢后
-//         return (false, start_idx);
-//     } else if sg.start_pt.extremum_ts < c_end {  // 当前线段的起点在中枢内
-//         if sg.end_pt.extremum_ts <= c_end {  // 当前线段的终点在中枢内
-//             if start_idx < segments.len() - 1 {  // 存在后一条线段
-//                 let post_sg = &segments[start_idx+1];
-//                 if post_sg.start_pt.extremum_ts < c_end {  // 后一条线段起点在中枢内，不与中枢终点重合
-//                     // 对所有跨越的情况都必须保持返回的start_idx不变
-//                     return (true, start_idx);
-//                 }
-//                 // 后一条线段起点在中枢后
-//                 return (false, start_idx);
-//             }
-//             // 不存在后一条线段
-//             return (false, start_idx + 1);
-//         }
-//         // 当前线段终点在中枢后
-//         return (false, start_idx);
-//     }
-//     // 当前线段的起点在中枢后
-//     (false, start_idx)
-// }
-
 fn maybe_center(subtrends: &[SubTrend], idx: usize, base_level: i32) -> Option<Center> {
     if idx < 3 {
         return None;
@@ -454,7 +297,6 @@ fn abs_diff(d1: &BigDecimal, d2: &BigDecimal) -> BigDecimal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shape::{Parting, Segment};
     use bigdecimal::BigDecimal;
     use chrono::NaiveDateTime;
 

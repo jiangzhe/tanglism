@@ -8,7 +8,7 @@ use warp::Filter;
 pub fn api_route(
     db: DbPool,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    api_get_health().or(api_search_keyword_stocks(db.clone()))
+    api_get_health().or(api_search_keyword_stocks(db))
 }
 
 /// 注入db的公共过滤器
@@ -27,7 +27,7 @@ fn api_search_keyword_stocks(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path!("api" / "keyword-stocks")
         .and(warp::query::<SearchKeywordStocksParam>())
-        .and(with_db(db.clone()))
+        .and(with_db(db))
         .and_then(search_keyword_stocks)
 }
 

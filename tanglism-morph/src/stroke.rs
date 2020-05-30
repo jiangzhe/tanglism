@@ -219,10 +219,10 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
                 if let Some(ref g1) = p1.right_gap {
                     let ratio = ratio.clone();
                     let mut diff = &g1.end_price - &g1.start_price;
-                    if &diff < &*GAP_ZERO {
+                    if diff < *GAP_ZERO {
                         diff = -diff;
                     }
-                    if &g1.start_price == &*GAP_ZERO {
+                    if g1.start_price == *GAP_ZERO {
                         return diff / &*GAP_MINIMAL_BASE >= ratio;
                     }
                     return diff / &g1.start_price >= ratio;
@@ -236,7 +236,7 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
     fn backtrack_last_stroke(&self, pt: &Parting, sk: &Stroke) -> bool {
         if self.sks.len() >= 2 {
             if let StrokeBacktrack::Diff(ref d) = self.cfg.backtrack {
-                if &sk.start_pt.extremum_price == &*GAP_ZERO {
+                if sk.start_pt.extremum_price == *GAP_ZERO {
                     return false;
                 }
                 if pt.top {
@@ -258,7 +258,7 @@ mod tests {
     use crate::shape::*;
     use bigdecimal::BigDecimal;
     use chrono::NaiveDateTime;
-    use tanglism_utils::{TradingTimestamps, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
+    use tanglism_utils::{TradingTimestamps, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN};
 
     #[test]
     fn test_shaper_no_stroke() -> Result<()> {
@@ -664,28 +664,6 @@ mod tests {
             end_ts,
             extremum_price: BigDecimal::from(price),
             n: 3,
-            top,
-            left_gap: None,
-            right_gap: None,
-        }
-    }
-    fn new_pt(
-        extremum_ts: &str,
-        start_ts: &str,
-        end_ts: &str,
-        n: i32,
-        price: f64,
-        top: bool,
-    ) -> Parting {
-        let extremum_ts = new_ts(extremum_ts);
-        let start_ts = new_ts(start_ts);
-        let end_ts = new_ts(end_ts);
-        Parting {
-            start_ts,
-            extremum_ts,
-            end_ts,
-            extremum_price: BigDecimal::from(price),
-            n,
             top,
             left_gap: None,
             right_gap: None,

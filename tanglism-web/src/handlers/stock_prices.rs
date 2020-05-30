@@ -1,4 +1,3 @@
-pub mod daily;
 pub mod ticks;
 
 use crate::models::{StockPriceTick, StockTickPrice};

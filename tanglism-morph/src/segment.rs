@@ -204,7 +204,6 @@ impl PendingSegment {
             let last_csk = self.gap_cs.last().unwrap();
             // 判断包含关系，合并插入
             // 跳空后的合并关系与线段走向相反
-            // if let Some(csk) = Self::cs_incl(&last_csk, &csk0, !self.upward) {
             if let Some(csk) = Self::cs_incl_right(&last_csk, &csk0) {
                 *self.gap_cs.last_mut().unwrap() = csk;
             } else {
@@ -258,20 +257,6 @@ impl PendingSegment {
                     .expect("next start stroke not found");
                 return self.action_reset(new_start);
             }
-
-            // 分型关系不满足的情况下，检查最后一个和倒数第二个的包含关系，并进行条件合并
-            // 该包含合并使用右合并逻辑
-            // if self.cs.len() >= 2 {
-            //     if let Some(last_csk) = Self::cs_incl_right(&self.cs[self.cs.len()-2], &self.cs[self.cs.len()-1]) {
-            //         self.cs.pop().unwrap();
-            //         *self.cs.last_mut().unwrap() = last_csk;
-            //         // 如果出现条件合并，则需要再次判断分型
-            //         if self.gap_sg.is_none() && self.cs_pt(&self.cs, &csk0, true) {
-            //             let new_start = *self.find_sk(self.end_pt.extremum_ts).expect("next start stroke not found");
-            //             return self.action_reset(new_start);
-            //         }
-            //     }
-            // }
 
             // 检查跳空关系
             if self.cs_gap(&self.cs[self.cs.len() - 1], &csk0) {
