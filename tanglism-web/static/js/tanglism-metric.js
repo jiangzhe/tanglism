@@ -1,7 +1,5 @@
 // 定义指标相关函数
-// 依赖jquery, jquery-ui, d3, tanglism-common
-
-import { ajax_params } from './tanglism-common.js';
+// 依赖jquery, jquery-ui, d3
 
 export const metric = {
     data,

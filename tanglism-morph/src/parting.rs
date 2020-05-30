@@ -227,35 +227,35 @@ impl<'k> PartingShaper<'k> {
 fn create_parting(k1: &CK, k2: &CK, k3: &CK, top: bool) -> Parting {
     let left_gap = if top && k1.end_high() < k2.start_low() {
         // 顶分型，k1结束最高价小于k2起始最低价
-        Some(Gap {
+        Some(Box::new(Gap {
             ts: k2.start_ts,
             start_price: k1.end_high().clone(),
             end_price: k2.start_low().clone(),
-        })
+        }))
     } else if !top && k1.end_low() > k2.start_high() {
         // 底分型，k1结束最低价大于k2起始最高价
-        Some(Gap {
+        Some(Box::new(Gap {
             ts: k2.start_ts,
             start_price: k1.end_low().clone(),
             end_price: k2.start_high().clone(),
-        })
+        }))
     } else {
         None
     };
     let right_gap = if top && k2.end_low() > k3.start_high() {
         // 顶分型，k2结束最低价大于k3起始最高价
-        Some(Gap {
+        Some(Box::new(Gap {
             ts: k3.start_ts,
             start_price: k2.end_low().clone(),
             end_price: k3.start_high().clone(),
-        })
+        }))
     } else if !top && k2.end_high() < k3.start_low() {
         // 底分型，k2结束最高价小于k3起始最低价
-        Some(Gap {
+        Some(Box::new(Gap {
             ts: k3.start_ts,
             start_price: k2.end_high().clone(),
             end_price: k3.start_low().clone(),
-        })
+        }))
     } else {
         None
     };

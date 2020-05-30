@@ -103,9 +103,9 @@ pub struct Parting {
     // 是否顶分型，非顶即底分型
     pub top: bool,
     // 左侧缺口
-    pub left_gap: Option<Gap>,
+    pub left_gap: Option<Box<Gap>>,
     // 右侧缺口
-    pub right_gap: Option<Gap>,
+    pub right_gap: Option<Box<Gap>>,
 }
 
 /// 笔

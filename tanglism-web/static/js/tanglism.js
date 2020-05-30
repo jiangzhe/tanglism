@@ -1,4 +1,3 @@
-import { metric } from './tanglism-metric.js';
 import { setupWebsocketEvents, validate_basic_cfg, draw } from './tanglism-draw.js';
 
 $(document).ready(function() {
@@ -60,6 +59,9 @@ $(document).ready(function() {
       draw();
     }
   });
+
+  // 标签页切换
+  $("#tabs").tabs();
 
   // websocket
   var ws = new WebSocket("ws://" + location.hostname + ":" + location.port + "/ws/");
