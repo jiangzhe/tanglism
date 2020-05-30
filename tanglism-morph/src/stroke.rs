@@ -534,17 +534,17 @@ mod tests {
     #[test]
     fn test_shaper_one_stroke_gap() -> Result<()> {
         let mut pt1 = new_pt30("2020-02-13 15:00", 10.00, false);
-        pt1.right_gap = Some(Gap {
+        pt1.right_gap = Some(Box::new(Gap {
             ts: new_ts("2020-02-14 10:00"),
             start_price: BigDecimal::from(10.00),
             end_price: BigDecimal::from(10.50),
-        });
+        }));
         let mut pt2 = new_pt30("2020-02-14 10:00", 10.50, true);
-        pt2.left_gap = Some(Gap {
+        pt2.left_gap = Some(Box::new(Gap {
             ts: new_ts("2020-02-13 15:00"),
             start_price: BigDecimal::from(10.00),
             end_price: BigDecimal::from(10.50),
-        });
+        }));
         let pts = vec![pt1, pt2];
         let sks1 = StrokeShaper::new(
             &pts,

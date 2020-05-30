@@ -8,81 +8,91 @@
         <title>缠论分析</title>
     </head>
     <body>
-        <div id="search_bar" style="margin-bottom: 20px">
-            <fieldset>
-                <legend>股票查询</legend>
-                <label>股票代码：</label><input type="text" id="input_stock_code" class="basic_trigger"/>
-                <label>起始日期：</label><input type="text" id="input_start_dt" autocomplete="off" class="basic_trigger"/>
-                <label>结束日期：</label><input type="text" id="input_end_dt" autocomplete="off" class="basic_trigger"/>
-                <label>周期：</label>
-                <select id="input_tick" class="basic_trigger">
-                    <option>5m</option>
-                    <option selected>30m</option>
-                    <option>1d</option>
-                </select>
-                <br/>
-                <label>独立K线成笔：</label>
-                <input type="radio" id="indep_k_check" name="stroke_logic_indep_k" value="indep_k" class="stroke_trigger" checked/>
-                <label for="indep_k_check">检查独立K线</label>
-                <input type="radio" id="non_indep_k_check" name="stroke_logic_indep_k" class="stroke_trigger" value="non_indep_k"/>
-                <label for="non_indep_k_check">不检查独立K线</label>
-                <br/>
-                <label>缺口成笔：</label>
-                <input type="radio" id="gap_none_check" name="stroke_logic_gap" value="gap_none" class="stroke_trigger" checked/>
-                <label for="gap_none_check">无</label>
-                <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening" class="stroke_trigger"/>
-                <label for="gap_opening_check">开盘跳空缺口成笔</label>
-                <input type="radio" id="gap_ratio_check" name="stroke_logic_gap" value="gap_ratio" class="stroke_trigger"/>
-                <label for="gap_ratio_check">跳空缺口幅度成笔</label>    
-                <span id="gap_ratio_percentage_span" style="display:none">
-                    <input type="number" id="gap_ratio_percentage" value="1.0" step="0.1" min="0.1" class="stroke_trigger"/>
-                    <label for="gap_ratio_percentage">%</label>
-                </span>
-                <br/>
-            </fieldset>
-        </div>
-        <div id="parameter_bar" style="margin-bottom: 20px">
-            <fieldset id="display_base_fieldset">
-                <legend>显示参数</legend>
-                <label>单柱宽度：</label>
-                <input type="number" id="bar_width" name="bar_width" value="15" step="1" min="1" autocomplete="off" class="draw_trigger"/>
-                <label>柱间距：</label>
-                <input type="radio" id="bar_padding_default" name="bar_padding" value="default" class="draw_trigger" checked/>
-                <label for="bar_padding_default">默认</label>
-                <input type="radio" id="bar_padding_fixed" name="bar_padding" class="draw_trigger" value="fixed"/>
-                <label for="bar_padding_fixed">固定</label>
-                <span id="bar_padding_fixed_width_span" style="display:none">
-                    <input type="number" id="bar_padding_fixed_width" value="1" step="1" min="1" autocomplete="off" class="draw_trigger"/>
-                </span>
-                <label>K线图高度：</label>
-                <input type="number" id="chart_height" value="400" step="100" min="100" autocomplete="off" class="draw_trigger"/>
-                <label>指标图高度：</label>
-                <input type="number" id="metric_height" value="100" step="50" min="50" autocomplete="off" class="draw_trigger"/>
-                <br/>
-                <label>形态显示：</label>
-                <input type="checkbox" id="stroke_draw" value="stroke_draw" class="morph_trigger"/>
-                <label for="stroke_draw">笔</label>
-                <input type="checkbox" id="segment_draw" value="segment_draw" class="morph_trigger"/>
-                <label for="segment_draw">线段</label>
-                <input type="checkbox" id="subtrend_draw" value="subtrend_draw" class="morph_trigger" checked/>
-                <label for="subtrend_draw">次级别</label>
-                <input type="checkbox" id="center_draw" value="center_draw" class="morph_trigger" checked/>
-                <label for="center_draw">中枢</label>
-            </fieldset>
-        </div>
-        <div id="k_container" style="margin-bottom: 50px"></div>
-        <div id="m_container" style="margin-bottom: 50px"></div>
-        <div id="data_container" style="display:none;">
+        <div id="tabs">
             <ul>
-                <li><a href="#sk_container">笔</a></li>
-                <li><a href="#sg_container">线段</a></li>
-                <li><a href="#st_container">次级别</a></li>
-                <li><a href="#cr_container">中枢</a></li>
+                <li><a href="#single">个股</a></li>
+                <li><a href="#multiple">选股</a></li>
             </ul>
-            <div id="sk_container" style="margin-bottom: 20px"></div>
-            <div id="sg_container" style="margin-bottom: 20px"></div>
-            <div id="st_container" style="margin-bottom: 20px"></div>
-            <div id="cr_container" style="margin-bottom: 20px"></div>
+            <div id="single">
+                <div id="search_bar" style="margin-bottom: 20px">
+                    <fieldset>
+                        <legend>股票查询</legend>
+                        <label>股票代码：</label><input type="text" id="input_stock_code" class="basic_trigger"/>
+                        <label>起始日期：</label><input type="text" id="input_start_dt" autocomplete="off" class="basic_trigger"/>
+                        <label>结束日期：</label><input type="text" id="input_end_dt" autocomplete="off" class="basic_trigger"/>
+                        <label>周期：</label>
+                        <select id="input_tick" class="basic_trigger">
+                            <option>5m</option>
+                            <option selected>30m</option>
+                            <option>1d</option>
+                        </select>
+                        <br/>
+                        <label>独立K线成笔：</label>
+                        <input type="radio" id="indep_k_check" name="stroke_logic_indep_k" value="indep_k" class="stroke_trigger" checked/>
+                        <label for="indep_k_check">检查独立K线</label>
+                        <input type="radio" id="non_indep_k_check" name="stroke_logic_indep_k" class="stroke_trigger" value="non_indep_k"/>
+                        <label for="non_indep_k_check">不检查独立K线</label>
+                        <br/>
+                        <label>缺口成笔：</label>
+                        <input type="radio" id="gap_none_check" name="stroke_logic_gap" value="gap_none" class="stroke_trigger" checked/>
+                        <label for="gap_none_check">无</label>
+                        <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening" class="stroke_trigger"/>
+                        <label for="gap_opening_check">开盘跳空缺口成笔</label>
+                        <input type="radio" id="gap_ratio_check" name="stroke_logic_gap" value="gap_ratio" class="stroke_trigger"/>
+                        <label for="gap_ratio_check">跳空缺口幅度成笔</label>    
+                        <span id="gap_ratio_percentage_span" style="display:none">
+                            <input type="number" id="gap_ratio_percentage" value="1.0" step="0.1" min="0.1" class="stroke_trigger"/>
+                            <label for="gap_ratio_percentage">%</label>
+                        </span>
+                        <br/>
+                    </fieldset>
+                </div>
+                <div id="parameter_bar" style="margin-bottom: 20px">
+                    <fieldset id="display_base_fieldset">
+                        <legend>显示参数</legend>
+                        <label>单柱宽度：</label>
+                        <input type="number" id="bar_width" name="bar_width" value="15" step="1" min="1" autocomplete="off" class="draw_trigger"/>
+                        <label>柱间距：</label>
+                        <input type="radio" id="bar_padding_default" name="bar_padding" value="default" class="draw_trigger" checked/>
+                        <label for="bar_padding_default">默认</label>
+                        <input type="radio" id="bar_padding_fixed" name="bar_padding" class="draw_trigger" value="fixed"/>
+                        <label for="bar_padding_fixed">固定</label>
+                        <span id="bar_padding_fixed_width_span" style="display:none">
+                            <input type="number" id="bar_padding_fixed_width" value="1" step="1" min="1" autocomplete="off" class="draw_trigger"/>
+                        </span>
+                        <label>K线图高度：</label>
+                        <input type="number" id="chart_height" value="400" step="100" min="100" autocomplete="off" class="draw_trigger"/>
+                        <label>指标图高度：</label>
+                        <input type="number" id="metric_height" value="100" step="50" min="50" autocomplete="off" class="draw_trigger"/>
+                        <br/>
+                        <label>形态显示：</label>
+                        <input type="checkbox" id="stroke_draw" value="stroke_draw" class="morph_trigger"/>
+                        <label for="stroke_draw">笔</label>
+                        <input type="checkbox" id="segment_draw" value="segment_draw" class="morph_trigger"/>
+                        <label for="segment_draw">线段</label>
+                        <input type="checkbox" id="subtrend_draw" value="subtrend_draw" class="morph_trigger" checked/>
+                        <label for="subtrend_draw">次级别</label>
+                        <input type="checkbox" id="center_draw" value="center_draw" class="morph_trigger" checked/>
+                        <label for="center_draw">中枢</label>
+                    </fieldset>
+                </div>
+                <div id="s_container">
+                    <div id="k_container" style="margin-bottom: 50px"></div>
+                    <div id="m_container" style="margin-bottom: 50px"></div>
+                </div>
+                <div id="data_container" style="display:none;">
+                    <ul>
+                        <li><a href="#sk_container">笔</a></li>
+                        <li><a href="#sg_container">线段</a></li>
+                        <li><a href="#st_container">次级别</a></li>
+                        <li><a href="#cr_container">中枢</a></li>
+                    </ul>
+                    <div id="sk_container" style="margin-bottom: 20px"></div>
+                    <div id="sg_container" style="margin-bottom: 20px"></div>
+                    <div id="st_container" style="margin-bottom: 20px"></div>
+                    <div id="cr_container" style="margin-bottom: 20px"></div>
+                </div>
+            </div>
         </div>
         <script src="./js/jquery-3.4.1.min.js"></script>
         <script src="./js/jquery-ui-1.2.1.min.js"></script>

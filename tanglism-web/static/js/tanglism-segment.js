@@ -9,7 +9,7 @@ export const segment = {
     outdate
 }
 
-import { kline, tooltip } from './tanglism-kline.js';
+import { kline, display_tooltip, hide_tooltip } from './tanglism-kline.js';
 
 const _data = [];
 var _outdate = true;
@@ -153,30 +153,22 @@ function draw(config) {
         .attr("stroke", "black")
         .attr("stroke-width", 2)
         .on("mouseover", function(d) {
-          tooltip().transition()
-            .duration(200)
-            .style("opacity", 0.9);
           var start_dt = d.start_pt.extremum_ts.substring(0, 10);
           var start_tm = d.start_pt.extremum_ts.substring(11, 16);
           var end_dt = d.end_pt.extremum_ts.substring(0, 10);
           var end_tm = d.end_pt.extremum_ts.substring(11, 16);
-          tooltip()
-            .html(
-              "开始日期：" + start_dt + "<br/>" + 
-              "开始时刻：" + start_tm + "<br/>" + 
-              "开始价格：" + d.start_pt.extremum_price + "<br/>" +
-              "结束日期：" + end_dt + "<br/>" +
-              "结束时刻：" + end_tm + "<br/>" +
-              "结束价格：" + d.end_pt.extremum_price)
-            .style("left", (d3.event.pageX + 30) + "px")
-            .style("top", (d3.event.pageY + 30) + "px");
+          const innerHtml = "开始日期：" + start_dt + "<br/>" + 
+            "开始时刻：" + start_tm + "<br/>" + 
+            "开始价格：" + d.start_pt.extremum_price + "<br/>" +
+            "结束日期：" + end_dt + "<br/>" +
+            "结束时刻：" + end_tm + "<br/>" +
+            "结束价格：" + d.end_pt.extremum_price;
+          display_tooltip(d3.event, innerHtml);
           // 加粗
           d3.select(this).attr("stroke-width", 4);
         })
         .on("mouseout", function(d) {
-          tooltip().transition()
-            .duration(500)
-            .style("opacity", 0);
+          hide_tooltip();
           // 还原
           d3.select(this).attr("stroke-width", 2);
         });

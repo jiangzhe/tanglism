@@ -5,21 +5,14 @@ export const kline = {
     data,
     conf,
     draw,
-    add_draw_callback,
     clear_drawing,
-    ajax,
-    add_data_callback
 };
 
 // k线数据
 const _data = [];
-// 画图回调
-const draw_callbacks = [];
-// 数据回调
-const data_callbacks = [];
 
 // 获取提示框，若不存在则创建
-export function tooltip() {
+function tooltip() {
   var t = d3.select("#k_container div.tooltip");
   if (!t.empty()) {
     return t;
@@ -28,6 +21,19 @@ export function tooltip() {
     .append("div")
     .attr("class", "tooltip")
     .style("opacity", 0);
+}
+
+export function display_tooltip(event, innerHtml) {
+  var tt = tooltip();
+  tt.transition().duration(200).style("opacity", 0.9);
+  var scrollLeft = document.getElementById("tabs").scrollLeft;
+  tt.html(innerHtml)
+    .style("left", (scrollLeft + event.pageX + 30) + "px")
+    .style("top", (event.pageY + 30) + "px");
+}
+
+export function hide_tooltip() {
+  tooltip().transition().duration(500).style("opacity", 0);
 }
 
 // k线基础配置
@@ -97,7 +103,10 @@ function draw() {
       return;
     }
     // 画图
-    svg.selectAll("rect").data(kline.data()).enter().append("rect")
+    svg.selectAll("rect.kline")
+        .data(kline.data()).enter()
+        .append("rect")
+        .attr("class", "kline")
         .attr("x", function(d, i) {
             return i * conf.bar_width;
         })
@@ -158,13 +167,6 @@ function draw() {
         if (d.open < d.close) return "red";
         return "green";
     });
-
-    for (var i = 0; i < draw_callbacks.length; i++) {
-        draw_callbacks[i](conf);
-    }
-    // stroke_draw(conf);
-    // segment_draw(conf);
-    // subtrend_draw(conf);
 };
 
 function clear_drawing() {
@@ -172,43 +174,4 @@ function clear_drawing() {
     d3.select("#k_tooltip").remove();
     // 删除svg
     d3.select("#k_lines").remove();
-}
-
-function add_draw_callback(callback) {
-    draw_callbacks.push(callback);
-}
-
-function ajax(params) {
-    $.ajax({
-        url: "api/v1/stock-prices/" + encodeURIComponent(params.code)
-          + "/ticks/" + encodeURIComponent(params.tick) + "?start_dt="
-          + encodeURIComponent(params.start_dt) + "&end_dt="
-          + encodeURIComponent(params.end_dt),
-        method: "GET",
-        dataType: "json",
-        success: function(resp) {
-          var kdata = $.map(resp.data, function(item) {
-            return {
-              ts: item.ts,
-              open: parseFloat(item.open),
-              close: parseFloat(item.close),
-              high: parseFloat(item.high),
-              low: parseFloat(item.low)
-            };
-          });
-          kline.data(kdata);
-          for (var i=0; i<data_callbacks.length;i++) {
-            data_callbacks[i](kdata);
-          }
-          kline.draw();
-        },
-        error: function(err) {
-          console.log("ajax error on query prices", err);
-          kline.clear_drawing();
-        }
-      })
-}
-
-function add_data_callback(callback) {
-    data_callbacks.push(callback);
 }
