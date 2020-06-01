@@ -7,7 +7,7 @@ use std::str::FromStr;
 use tanglism_morph::{
     ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K,
 };
-use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend};
+use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend, SubTrendType};
 use tanglism_utils::{LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,6 +82,7 @@ pub(crate) fn get_tanglism_subtrends(
                 end_ts: align_tick(tick, sg.end_pt.extremum_ts)?,
                 end_price: sg.end_pt.extremum_price.clone(),
                 level: 2,
+                typ: SubTrendType::Normal,
             })
         },
         |sk| {
@@ -91,6 +92,7 @@ pub(crate) fn get_tanglism_subtrends(
                 end_ts: align_tick(tick, sk.end_pt.extremum_ts)?,
                 end_price: sk.end_pt.extremum_price.clone(),
                 level: 1,
+                typ: SubTrendType::Normal,
             })
         },
     )?;
