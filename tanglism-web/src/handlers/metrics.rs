@@ -1,4 +1,5 @@
 mod ema;
+mod ma;
 
 use super::stock_prices::get_stock_tick_prices;
 use crate::BasicCfg;

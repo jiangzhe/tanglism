@@ -379,7 +379,7 @@ impl Session {
     fn ensure_centers(&mut self) -> Result<bool> {
         if self.centers.is_none() {
             if let Some(ref subtrends) = self.subtrends {
-                let centers = tanglism::get_tanglism_centers(subtrends, 2)?;
+                let centers = tanglism::get_tanglism_centers(subtrends, 1)?;
                 self.centers.replace(centers);
                 return Ok(true);
             }
