@@ -152,12 +152,14 @@ function draw(config) {
         .attr("y2", function(d) {
             return conf.h - conf.yscale(parseFloat(d.end_price));
         })
-        .attr("stroke", function(d) {
-          return d.level === 1 ? "violet" : "purple";
-        })
-        .attr("stroke-width", function(d) {
-          return d.level === 1 ? 1 : 2;
-        })
+        // .attr("stroke", function(d) {
+        //   return d.level === 1 ? "violet" : "purple";
+        // })
+        // .attr("stroke-width", function(d) {
+        //   return d.level === 1 ? 1 : 2;
+        // })
+        .attr("stroke", "purple")
+        .attr("stroke-width", 2)
         .on("mouseover", function(d) {
           var start_dt = d.start_ts.substring(0, 10);
           var start_tm = d.start_ts.substring(11, 16);

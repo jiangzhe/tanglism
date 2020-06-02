@@ -7,7 +7,7 @@ use std::str::FromStr;
 use tanglism_morph::{
     ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K,
 };
-use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend, SubTrendType};
+use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend};
 use tanglism_utils::{LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,7 +42,7 @@ pub fn get_tanglism_partings(prices: &[ticks::StockPrice]) -> Result<Vec<Parting
     ks_to_pts(&ks).map_err(|e| e.into())
 }
 
-pub(crate) fn get_tanglism_strokes(
+pub fn get_tanglism_strokes(
     pts: &[Parting],
     tick: &str,
     stroke_cfg: StrokeConfig,
@@ -63,67 +63,25 @@ pub(crate) fn get_tanglism_strokes(
     Ok(data)
 }
 
-pub(crate) fn get_tanglism_segments(sks: &[Stroke]) -> Result<Vec<Segment>> {
+pub fn get_tanglism_segments(sks: &[Stroke]) -> Result<Vec<Segment>> {
     sks_to_sgs(&sks).map_err(Into::into)
 }
 
-pub(crate) fn get_tanglism_subtrends(
+pub fn get_tanglism_subtrends(
     segments: &[Segment],
     strokes: &[Stroke],
     tick: &str,
 ) -> Result<Vec<SubTrend>> {
-    let data = trend::merge_subtrends::<_, _, crate::Error>(
+    let data = trend::unify_subtrends(
         segments,
         strokes,
-        |sg| {
-            Ok(SubTrend {
-                start_ts: align_tick(tick, sg.start_pt.extremum_ts)?,
-                start_price: sg.start_pt.extremum_price.clone(),
-                end_ts: align_tick(tick, sg.end_pt.extremum_ts)?,
-                end_price: sg.end_pt.extremum_price.clone(),
-                level: 2,
-                typ: SubTrendType::Normal,
-            })
-        },
-        |sk| {
-            Ok(SubTrend {
-                start_ts: align_tick(tick, sk.start_pt.extremum_ts)?,
-                start_price: sk.start_pt.extremum_price.clone(),
-                end_ts: align_tick(tick, sk.end_pt.extremum_ts)?,
-                end_price: sk.end_pt.extremum_price.clone(),
-                level: 1,
-                typ: SubTrendType::Normal,
-            })
-        },
+        tick,
     )?;
     Ok(data)
 }
 
 pub fn get_tanglism_centers(subtrends: &[SubTrend], base_level: i32) -> Result<Vec<Center>> {
     Ok(trend::merge_centers(&subtrends, base_level))
-}
-
-#[inline]
-fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
-    use tanglism_utils::TradingTimestamps;
-    let aligned = match tick {
-        "1d" => LOCAL_DATES.aligned_tick(ts),
-        "30m" => LOCAL_TS_30_MIN.aligned_tick(ts),
-        "5m" => LOCAL_TS_5_MIN.aligned_tick(ts),
-        "1m" => LOCAL_TS_1_MIN.aligned_tick(ts),
-        _ => {
-            return Err(Error::custom(
-                ErrorKind::InternalServerError,
-                format!("invalid tick: {}", tick),
-            ))
-        }
-    };
-    aligned.ok_or_else(|| {
-        Error::custom(
-            ErrorKind::InternalServerError,
-            format!("invalid timestamp: {}", ts),
-        )
-    })
 }
 
 pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {

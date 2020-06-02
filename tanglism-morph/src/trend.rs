@@ -152,7 +152,7 @@ where
 ///          如果不存在缺口，因为该笔前后必为段，则检查前后两段是否可合并为同向的段
 ///          如不可以，该笔独立成段，并标记分段。
 /// 连续至少2笔：只可能存在两种可能，与前一段合并为同向段，与后一段合并为同向段。
-pub fn align_subtrends(sgs: &[Segment], sks: &[Stroke], tick: &str) -> Result<Vec<SubTrend>> {
+pub fn unify_subtrends(sgs: &[Segment], sks: &[Stroke], tick: &str) -> Result<Vec<SubTrend>> {
     let mut subtrends = Vec::new();
     let mut strokes = Vec::new();
     let mut sgi = 0;
@@ -252,7 +252,7 @@ fn accumulate_strokes(subtrends: &mut Vec<SubTrend>, strokes: &[Stroke], tick: &
             let downward = prev_st.end_price < prev_st.start_price && sk.end_pt.extremum_price < prev_st.start_price;
             if upward || downward {
                 let st = subtrends.last_mut().unwrap();
-                st.end_ts = sk.end_pt.extremum_ts;
+                st.end_ts = align_tick(tick, sk.end_pt.extremum_ts)?;
                 st.end_price = sk.end_pt.extremum_price.clone();
                 st.typ = SubTrendType::Combination;
                 return Ok(true);
@@ -262,33 +262,6 @@ fn accumulate_strokes(subtrends: &mut Vec<SubTrend>, strokes: &[Stroke], tick: &
     // 不处理2笔以上情况
     Ok(false)
 }
-
-fn combine_strokes(strokes: &[Stroke]) -> Option<SubTrend> {
-    if strokes.len() <= 2 {
-        return None;
-    }
-    if let (Some(first), Some(last)) = (strokes.first(), strokes.last()) {
-        let upward = first.end_pt.extremum_price > first.start_pt.extremum_price 
-            && last.end_pt.extremum_price > last.start_pt.extremum_price
-            && last.end_pt.extremum_price > first.start_pt.extremum_price;
-        let downward = first.end_pt.extremum_price < first.start_pt.extremum_price
-            && last.end_pt.extremum_price < last.start_pt.extremum_price
-            && last.end_pt.extremum_price < first.start_pt.extremum_price;
-        if upward || downward {
-            return Some(SubTrend{
-                start_ts: first.start_pt.extremum_ts,
-                start_price: first.start_pt.extremum_price.clone(),
-                end_ts: last.end_pt.extremum_ts,
-                end_price: last.end_pt.extremum_price.clone(),
-                level: 1,
-                typ: SubTrendType::Combination,
-            })
-        }
-    }
-    None
-}
-
-
 
 #[inline]
 fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
