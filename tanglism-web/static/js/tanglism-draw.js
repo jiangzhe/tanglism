@@ -119,7 +119,8 @@ function prepare_data(dataset) {
             subtrend.data(dataset[i].data);
             changed = true;
         } else if (dataset[i].type === "Centers") {
-            center.data(dataset[i].data);
+            var data = dataset[i].data.filter(function(d) {return d.type === "Center"}).map(function(d) {return d.data});
+            center.data(data);
             changed = true;
         } else if (dataset[i].type === "MACD") {
             metric.data("DIF", dataset[i].data.dif);

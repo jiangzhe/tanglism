@@ -5,9 +5,9 @@ use chrono::NaiveDateTime;
 use serde_derive::*;
 use std::str::FromStr;
 use tanglism_morph::{
-    ks_to_pts, sks_to_sgs, trend, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K,
+    ks_to_pts, sks_to_sgs, trend, center, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K, TrendConfig,
 };
-use tanglism_morph::{Center, Parting, Segment, Stroke, SubTrend};
+use tanglism_morph::{CenterElement, Parting, Segment, Stroke, SubTrend};
 use tanglism_utils::{LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -80,8 +80,8 @@ pub fn get_tanglism_subtrends(
     Ok(data)
 }
 
-pub fn get_tanglism_centers(subtrends: &[SubTrend], base_level: i32) -> Result<Vec<Center>> {
-    Ok(trend::merge_centers(&subtrends, base_level))
+pub fn get_tanglism_centers(subtrends: &[SubTrend]) -> Result<Vec<CenterElement>> {
+    Ok(center::unify_centers(&subtrends))
 }
 
 pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
@@ -138,4 +138,19 @@ pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
         judge,
         backtrack,
     })
+}
+
+pub fn parse_trend_cfg(s: &str) -> Result<TrendConfig> {
+    let mut level = 1;
+    for c in s.split(',') {
+        if c.starts_with("level") {
+            let ls: Vec<&str> = c.split(':').collect();
+            if ls.len() == 2 {
+                if let Ok(lv) = ls[1].parse() {
+                    level = lv;
+                }
+            }
+        }
+    }
+    Ok(TrendConfig{level})
 }
