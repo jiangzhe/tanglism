@@ -56,11 +56,11 @@ function table() {
       .data(function(d) {
         return [
           d.level === 1 ? "笔" : "线段",
-          d.start_ts, 
-          d.start_price, 
-          d.end_ts, 
-          d.end_price, 
-          parseFloat(d.start_price) < parseFloat(d.end_price) ? "上升" : "下降"
+          d.start.ts, 
+          d.start.value, 
+          d.end.ts, 
+          d.end.value, 
+          parseFloat(d.start.value) < parseFloat(d.end.value) ? "上升" : "下降"
         ];
       })
       .enter()
@@ -109,12 +109,12 @@ function draw(config) {
     while (si < _data.length && ki < kdata.length) {
       var st = _data[si];
       var k = kdata[ki];
-      if (!start_match && st.start_ts === k.ts) {
+      if (!start_match && st.start.ts === k.ts) {
         // 起点序列号
         st.start_id = ki;
         // 将start_match置为true
         start_match = true;
-      } else if (st.end_ts === k.ts) {
+      } else if (st.end.ts === k.ts) {
         // 终点序列号
         st.end_id = ki;
         // 仅递增线段，下一线段起点应与前一线段终点一致，需复用ki
@@ -147,10 +147,10 @@ function draw(config) {
             return d.end_id * conf.bar_width + conf.bar_inner_width / 2;
         })
         .attr("y1", function(d) {
-            return conf.h - conf.yscale(parseFloat(d.start_price));
+            return conf.h - conf.yscale(parseFloat(d.start.value));
         })
         .attr("y2", function(d) {
-            return conf.h - conf.yscale(parseFloat(d.end_price));
+            return conf.h - conf.yscale(parseFloat(d.end.value));
         })
         // .attr("stroke", function(d) {
         //   return d.level === 1 ? "violet" : "purple";
@@ -161,28 +161,24 @@ function draw(config) {
         .attr("stroke", "purple")
         .attr("stroke-width", 2)
         .on("mouseover", function(d) {
-          var start_dt = d.start_ts.substring(0, 10);
-          var start_tm = d.start_ts.substring(11, 16);
-          var end_dt = d.end_ts.substring(0, 10);
-          var end_tm = d.end_ts.substring(11, 16);
+          var start_dt = d.start.ts.substring(0, 10);
+          var start_tm = d.start.ts.substring(11, 16);
+          var end_dt = d.end.ts.substring(0, 10);
+          var end_tm = d.end.ts.substring(11, 16);
           const innerHtml = "开始日期：" + start_dt + "<br/>" + 
             "开始时刻：" + start_tm + "<br/>" + 
-            "开始价格：" + d.start_price + "<br/>" +
+            "开始价格：" + d.start.value + "<br/>" +
             "结束日期：" + end_dt + "<br/>" +
             "结束时刻：" + end_tm + "<br/>" +
-            "结束价格：" + d.end_price;
+            "结束价格：" + d.end.value;
           display_tooltip(d3.event, innerHtml);
           // 加粗
-          d3.select(this).attr("stroke-width", function(d) {
-            return d.level === 1 ? 2 : 4;
-          });
+          d3.select(this).attr("stroke-width", 4);
         })
         .on("mouseout", function(d) {
           hide_tooltip();
           // 还原
-          d3.select(this).attr("stroke-width", function(d) {
-            return d.level === 1 ? 1 : 2;
-          });
+          d3.select(this).attr("stroke-width", 2);
         });
 };
 

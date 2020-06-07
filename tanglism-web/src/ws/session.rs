@@ -6,7 +6,7 @@ use crate::{DbPool, Error, ErrorKind, Result};
 use jqdata::JqdataClient;
 use serde_derive::*;
 use std::collections::BTreeSet;
-use tanglism_morph::{Center, Segment, Stroke, StrokeConfig, SubTrend};
+use tanglism_morph::{CenterElement, Segment, Stroke, StrokeConfig, SubTrend, TrendConfig};
 use tanglism_utils::parse_ts_from_str;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -20,6 +20,7 @@ pub enum Request {
     },
     StrokeCfg(String),
     MetricsCfg(String),
+    TrendCfg(String),
     Query {
         refresh: bool,
         objects: Vec<QueryObject>,
@@ -46,7 +47,7 @@ pub enum Data {
     SegmentsNoChange,
     SubTrends(Vec<SubTrend>),
     SubTrendsNoChange,
-    Centers(Vec<Center>),
+    Centers(Vec<CenterElement>),
     CentersNoChange,
     MACD(MacdMetric),
     MACDNoChange,
@@ -73,13 +74,14 @@ pub struct Session {
     // 缓存配置
     basic_cfg: Option<BasicCfg>,
     stroke_cfg: Option<StrokeConfig>,
+    trend_cfg: Option<TrendConfig>,
     metrics_cfg: Option<String>,
     // 缓存指标
     ks: Option<Vec<ticks::StockPrice>>,
     strokes: Option<Vec<Stroke>>,
     segments: Option<Vec<Segment>>,
     subtrends: Option<Vec<SubTrend>>,
-    centers: Option<Vec<Center>>,
+    centers: Option<Vec<CenterElement>>,
     // DIF/DEA/MACD
     macd: Option<metrics::MacdMetric>,
 }
@@ -92,6 +94,7 @@ impl Session {
             db,
             basic_cfg: None,
             stroke_cfg: None,
+            trend_cfg: None,
             metrics_cfg: None,
             ks: None,
             strokes: None,
@@ -150,6 +153,19 @@ impl Session {
                     log::debug!("replace stroke cfg with new one: {:?}", new_cfg);
                     self.stroke_cfg.replace(new_cfg);
                     self.clear_tanglism_cache();
+                }
+            }
+            Request::TrendCfg(cfg) => {
+                let new_cfg = tanglism::parse_trend_cfg(&cfg)?;
+                let diff = self
+                    .trend_cfg
+                    .as_ref()
+                    .map(|orig| orig != &new_cfg)
+                    .unwrap_or(true);
+                if diff {
+                    log::debug!("replace trend cfg with new one: {:?}", new_cfg);
+                    self.trend_cfg.replace(new_cfg);
+                    self.clear_trend_cache();
                 }
             }
             Request::MetricsCfg(cfg) => {
@@ -267,6 +283,12 @@ impl Session {
     }
 
     #[inline]
+    fn clear_trend_cache(&mut self) {
+        self.subtrends.take();
+        self.centers.take();
+    }
+
+    #[inline]
     fn clear_metrics_cache(&mut self) {
         self.macd.take();
     }
@@ -337,23 +359,25 @@ impl Session {
                 // 次级别K线
                 // 取次级别tick
                 let tick = basic_cfg.tick.as_ref();
-                let subtick = match tick {
-                    "1d" => "30m",
-                    "30m" => "5m",
-                    "5m" => "1m",
-                    "1m" => {
-                        return Err(Error::custom(
-                            ErrorKind::BadRequest,
-                            "tick 1m cannot have subtrends".to_owned(),
-                        ))
-                    }
-                    _ => {
-                        return Err(Error::custom(
-                            ErrorKind::BadRequest,
-                            format!("invalid tick: {}", tick),
-                        ))
-                    }
-                };
+                // let subtick = match tick {
+                //     "1d" => "30m",
+                //     "30m" => "5m",
+                //     "5m" => "1m",
+                //     "1m" => {
+                //         return Err(Error::custom(
+                //             ErrorKind::BadRequest,
+                //             "tick 1m cannot have subtrends".to_owned(),
+                //         ))
+                //     }
+                //     _ => {
+                //         return Err(Error::custom(
+                //             ErrorKind::BadRequest,
+                //             format!("invalid tick: {}", tick),
+                //         ))
+                //     }
+                // };
+                log::debug!("Support 1m subtrend only");
+                let subtick = "1m";
                 // 无法重用K线是因为级别不同
                 let prices = stock_prices::get_stock_tick_prices(
                     &self.db,
@@ -379,7 +403,7 @@ impl Session {
     fn ensure_centers(&mut self) -> Result<bool> {
         if self.centers.is_none() {
             if let Some(ref subtrends) = self.subtrends {
-                let centers = tanglism::get_tanglism_centers(subtrends, 1)?;
+                let centers = tanglism::get_tanglism_centers(subtrends)?;
                 self.centers.replace(centers);
                 return Ok(true);
             }

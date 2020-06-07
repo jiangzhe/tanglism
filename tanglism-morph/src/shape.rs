@@ -157,3 +157,135 @@ pub struct Gap {
     pub start_price: BigDecimal,
     pub end_price: BigDecimal,
 }
+
+/// 中枢元素
+/// 
+/// 中枢与分型，笔，线段有很大的不同。
+/// 在一张连续的K线图中，中枢通常是离散分布。
+/// 中枢与中枢之间通过次级别（或以下）走势相连。
+/// 因此中枢分析产生的序列既包含中枢，也包含次级别走势乃至缺口
+/// 这里统一使用CenterElement枚举进行建模
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", content = "data")]
+pub enum CenterElement {
+    Center(Center),
+    SubTrend(SubTrend),
+    // 类中枢
+    //
+    // 类中枢同样由三段重叠的次级别走势构成
+    // 将三段走势分别编号为s1, s2, s3，
+    // 则从整体走势上看，中枢s1, s3都是逆向走势
+    // 而类中枢的s2是逆向走势。
+    // 即类中枢与中枢的起始方向是相反的。
+    SemiCenter(SemiCenter),
+}
+
+/// 中枢
+///
+/// 缠论的基础概念
+/// 由至少3个存在重叠区间的次级别走势类型构成。
+/// 1分钟K线图中走势类型由线段代替。
+/// 1分钟K线图的笔即可视为1分钟“中枢”，极端如20课所说，
+/// 连续多天开盘封涨停仍只形成1分钟中枢。
+/// 5分钟的中枢由至少3个1分钟级别的线段构成。
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Center {
+    // 起始点
+    pub start: ValuePoint,
+    // 结束点
+    pub end: ValuePoint,
+    // 共享最低点，即所有次级别走势类型的最低点中的最高点
+    pub shared_low: ValuePoint,
+    // 共享最高点，即所有次级别走势类型的最高点中的最低点
+    pub shared_high: ValuePoint,
+    // 最低点
+    pub low: ValuePoint,
+    // 最高点
+    pub high: ValuePoint,
+    // 中枢级别
+    pub level: i32,
+    // 方向，由第一个走势确定
+    // 一般的，在趋势中的中枢方向总与趋势相反
+    // 即上升时，中枢总是由下上下三段次级别走势构成
+    // 盘整时，相邻连个中枢方向不一定一致
+    pub upward: bool,
+    // 组成该中枢的次级别走势个数
+    pub n: usize,
+}
+
+impl Center {
+    pub fn contains_price(&self, price: &BigDecimal) -> bool {
+        price >= &self.shared_low.value && price <= &self.shared_high.value
+    }
+
+    // 两个价格分别位于中枢区间两侧
+    pub fn split_prices(&self, price1: &BigDecimal, price2: &BigDecimal) -> bool {
+        (price1 < &self.shared_low.value && price2 > &self.shared_high.value) || (price1 > &self.shared_high.value && price2 < &self.shared_low.value)
+    }
+
+    // 是否是类中枢形态。类中枢的最高最低点分别为起始和结束点。
+    pub fn semi(&self) -> bool {
+        (self.start.value < self.shared_low.value && self.end.value > self.shared_high.value) || (self.start.value > self.shared_high.value && self.end.value < self.shared_low.value)
+    }
+}
+
+/// 类中枢
+/// 
+/// 这里的类中枢与缠论略有不同。
+/// 连接两个中枢间的多段走势未构成标准中枢，则归为类中枢。
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SemiCenter {
+    pub start: ValuePoint,
+    pub end: ValuePoint,
+    pub level: i32,
+    pub upward: bool,
+    pub n: usize,
+    // 是否与前一个中枢共享起始次级别走势
+    pub shared_start: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ValuePoint {
+    pub ts: NaiveDateTime,
+    pub value: BigDecimal,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SubTrendType {
+    Normal,
+    // 由缺口形成的次级别
+    Gap,
+    // 前后两段被笔破坏
+    Divider,
+    // 由多条线段组合而成
+    Combination,
+}
+
+/// 次级别走势
+///
+/// 当前实现使用次级别K线图中的线段和笔（次级别以下）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SubTrend {
+    pub start: ValuePoint,
+    pub end: ValuePoint,
+    pub level: i32,
+    pub typ: SubTrendType,
+}
+
+impl SubTrend {
+    pub fn sorted(&self) -> (&BigDecimal, &BigDecimal) {
+        if self.start.value < self.end.value {
+            (&self.start.value, &self.end.value)
+        } else {
+            (&self.end.value, &self.start.value)
+        }
+    }
+
+    pub fn sorted_points(&self) -> (ValuePoint, ValuePoint) {
+        if self.start.value < self.end.value {
+            (self.start.clone(), self.end.clone())
+        } else {
+            (self.end.clone(), self.start.clone())
+        }
+    }
+}

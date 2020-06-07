@@ -55,14 +55,14 @@ function table() {
       .selectAll("td")
       .data(function(d) {
         return [
-          d.start_ts, 
-          d.start_price, 
-          d.end_ts, 
-          d.end_price,
-          d.shared_low,
-          d.shared_high,
-          d.low,
-          d.high,
+          d.start.ts, 
+          d.start.value, 
+          d.end.ts, 
+          d.end.value,
+          d.shared_low.value,
+          d.shared_high.value,
+          d.low.value,
+          d.high.value,
           d.upward ? "上升" : "下降"
         ];
       })
@@ -112,12 +112,12 @@ function draw(config) {
     while (ci < _data.length && ki < kdata.length) {
       var cr = _data[ci];
       var k = kdata[ki];
-      if (!start_match && cr.start_ts === k.ts) {
+      if (!start_match && cr.start.ts === k.ts) {
         // 起点序列号
         cr.start_id = ki;
         // 将start_match置为true
         start_match = true;
-      } else if (cr.end_ts === k.ts) {
+      } else if (cr.end.ts === k.ts) {
         // 终点序列号
         cr.end_id = ki;
         // 仅递增线段，下一中枢起点应与前一线段终点一致，需复用ki
@@ -147,13 +147,13 @@ function draw(config) {
             return d.start_id * conf.bar_width;
         })
         .attr("y", function(d, i) {
-            return conf.h - conf.yscale(d.shared_high);
+            return conf.h - conf.yscale(d.shared_high.value);
         })
         .attr("width", function(d) {
             return conf.bar_width * (d.end_id - d.start_id);
         })
         .attr("height", function(d) {
-            return Math.max(1, Math.abs(conf.yscale(d.shared_high) - conf.yscale(d.shared_low)));
+            return Math.max(1, Math.abs(conf.yscale(d.shared_high.value) - conf.yscale(d.shared_low.value)));
         })
         .attr("fill", "gold")
         .attr("opacity", 0.5);
