@@ -180,6 +180,29 @@ pub enum CenterElement {
     SemiCenter(SemiCenter),
 }
 
+impl CenterElement {
+    pub fn center(&self) -> Option<&Center> {
+        match self {
+            CenterElement::Center(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn subtrend(&self) -> Option<&SubTrend> {
+        match self {
+            CenterElement::SubTrend(st) => Some(st),
+            _ => None,
+        }
+    }
+
+    pub fn semicenter(&self) -> Option<&SemiCenter> {
+        match self {
+            CenterElement::SemiCenter(sc) => Some(sc),
+            _ => None,
+        }
+    }
+}
+
 /// 中枢
 ///
 /// 缠论的基础概念
@@ -224,9 +247,9 @@ impl Center {
     }
 
     // 是否是类中枢形态。类中枢的最高最低点分别为起始和结束点。
-    pub fn semi(&self) -> bool {
-        (self.start.value < self.shared_low.value && self.end.value > self.shared_high.value) || (self.start.value > self.shared_high.value && self.end.value < self.shared_low.value)
-    }
+    // pub fn semi(&self) -> bool {
+    //     (self.start.value < self.shared_low.value && self.end.value > self.shared_high.value) || (self.start.value > self.shared_high.value && self.end.value < self.shared_low.value)
+    // }
 }
 
 /// 类中枢
