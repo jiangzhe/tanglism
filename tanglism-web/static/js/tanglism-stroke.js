@@ -2,6 +2,7 @@
 // 依赖jquery, jquery-ui, d3, tanglism-common, tanglism-kline
 export const stroke = {
     data,
+    clear_data,
     table,
     clear_table,
     draw,
@@ -25,6 +26,11 @@ function data(input) {
     }
     return _data;
 };
+
+function clear_data() {
+  while(_data.length > 0) { _data.pop(); }
+  _outdate = true;
+}
 
 // 仅在K线图完成后调用
 function draw(config) {

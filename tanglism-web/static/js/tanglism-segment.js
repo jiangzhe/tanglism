@@ -3,6 +3,7 @@
 
 export const segment = {
     data,
+    clear_data,
     table,
     clear_table,
     draw,
@@ -24,7 +25,12 @@ function data(input) {
       return;
     }
     return _data;
-};
+}
+
+function clear_data() {
+  while(_data.length > 0) { _data.pop(); }
+  _outdate = true;
+}
 
 function table() {
     // 创建表格
@@ -75,7 +81,7 @@ function table() {
       .on("mouseout", function(){
         d3.select(this).style("background-color", "white");
       });
-};
+}
 
 function clear_table() {
     // 删除表格

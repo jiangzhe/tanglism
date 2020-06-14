@@ -11,138 +11,288 @@
 //!
 //! 目前的实现是直接使用次级别段作为次级别走势，而次级别笔作为次级别以下走势。
 
-use crate::shape::{Segment, Stroke, SubTrend, SubTrendType, ValuePoint};
+use crate::align_tick;
+use crate::shape::{Center, CenterElement, SemiCenter, SubTrend, SubTrendType, Trend, ValuePoint};
+use crate::{Error, Result};
 use chrono::NaiveDateTime;
-use crate::{Result, Error};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrendConfig {
-    pub level: u32,
+    pub level: i32,
 }
 
-/// 将线段与笔对齐为某个周期下的次级别走势
-/// 线段直接视为次级别走势
-/// 笔需要进行如下判断
-/// 连续1笔：如果1笔存在缺口，视为次级别走势，并标记缺口
-///          如果不存在缺口，因为该笔前后必为段，则检查前后两段是否可合并为同向的段
-///          如不可以，该笔独立成段，并标记分段。
-/// 连续至少2笔：只可能存在两种可能，与前一段合并为同向段，与后一段合并为同向段。
-pub fn unify_subtrends(sgs: &[Segment], sks: &[Stroke], tick: &str) -> Result<Vec<SubTrend>> {
-    let mut subtrends = Vec::new();
-    let mut strokes = Vec::new();
-    let mut sgi = 0;
-    let mut ski = 0;
-    while sgi < sgs.len() {
-        let sg = &sgs[sgi];
-        // 将线段前的笔加入次级别走势
-        strokes.clear();
-        while ski < sks.len() && sks[ski].start_pt.extremum_ts < sg.start_pt.extremum_ts {
-            let sk = &sks[ski];
-            strokes.push(sk.clone());
-            if accumulate_strokes(&mut subtrends, &strokes, tick)? {
-                strokes.clear();
-            }
-            ski += 1;
+pub fn unify_trends(centers: &[CenterElement]) -> Vec<Trend> {
+    Standard::new().aggregate(centers)
+}
+
+trait TrendStrategy {
+    fn aggregate(self, centers: &[CenterElement]) -> Vec<Trend>;
+}
+
+struct Standard {
+    tmp: Vec<TemporaryTrend>,
+}
+
+impl TrendStrategy for Standard {
+    fn aggregate(mut self, centers: &[CenterElement]) -> Vec<Trend> {
+        for idx in 0..centers.len() {
+            self.accmulate(centers, idx);
         }
-        if strokes.is_empty() {
-            // 将线段加入次级别走势
-            subtrends.push(segment_as_subtrend(sg, tick)?);
-        } else if strokes.len() == 1 {
-            let sk = strokes.pop().unwrap();
-            subtrends.push(stroke_as_subtrend(&sk, tick, SubTrendType::Divider)?);
-            subtrends.push(segment_as_subtrend(sg, tick)?);
-        } else {
-            // 大于1笔，判断其与后段是否同向
-            let sk = strokes.first().unwrap();
-            let upward = sk.end_pt.extremum_price > sk.start_pt.extremum_price
-                && sg.end_pt.extremum_price > sg.start_pt.extremum_price
-                && sg.end_pt.extremum_price > sk.start_pt.extremum_price;
-            let downward = sk.end_pt.extremum_price < sk.start_pt.extremum_price
-                && sg.end_pt.extremum_price < sg.start_pt.extremum_price
-                && sg.end_pt.extremum_price < sk.start_pt.extremum_price;
-            if upward || downward {
-                // 合并插入
-                subtrends.push(SubTrend{
-                    start: ValuePoint{ts: align_tick(tick, sk.start_pt.extremum_ts)?, value: sk.start_pt.extremum_price.clone()},
-                    end: ValuePoint{ts: align_tick(tick, sg.end_pt.extremum_ts)?, value: sg.end_pt.extremum_price.clone()},
-                    level: 1,
-                    typ: SubTrendType::Combination,
-                });
+        self.trends(centers)
+    }
+}
+
+/// 中枢生成走势算法
+impl Standard {
+    fn new() -> Self {
+        Standard { tmp: Vec::new() }
+    }
+
+    fn accmulate(&mut self, centers: &[CenterElement], idx: usize) {
+        let ce = &centers[idx];
+        if self.tmp.is_empty() {
+            let (centers, last_center) = if let Some(c) = ce.center() {
+                (1, Some(c.clone()))
             } else {
-                // 忽略笔
-                subtrends.push(segment_as_subtrend(sg, tick)?);
-            }
+                (0, None)
+            };
+            let start = ce.start().clone();
+            self.push_pending(TemporaryPending {
+                start_idx: 0,
+                end_idx: 0,
+                centers,
+                last_center,
+                start,
+                upward: None,
+                level: ce.level(),
+            });
+            return;
         }
-        sgi += 1;
-        // 跳过所有被线段覆盖的笔
-        while ski < sks.len() && sks[ski].start_pt.extremum_ts < sg.end_pt.extremum_ts {
-            ski += 1;
+        match self.last().unwrap() {
+            TemporaryTrend::Pending(p) => {
+                // 未完成的走势
+                match &centers[idx] {
+                    CenterElement::Center(c) => {
+                        if p.centers == 0 {
+                            // 走势没有中枢，合并进入走势
+                            let c = c.clone();
+                            self.update_pending(move |p| {
+                                p.end_idx = idx;
+                                p.centers += 1;
+                                p.last_center.replace(c);
+                            });
+                        } else if let Some(upward) = p.upward {
+                            // 走势存在中枢，且方向固定
+                            let last_center = p
+                                .last_center
+                                .as_ref()
+                                .cloned()
+                                .expect("last center in pending trend");
+                            if (upward && &c.shared_low.value > &last_center.shared_high.value)
+                                || (!upward && &c.shared_high.value < &last_center.shared_low.value)
+                            {
+                                // 向上同向或向下同向
+                                let new_center = c.clone();
+                                self.update_pending(move |p| {
+                                    p.end_idx = idx;
+                                    p.centers += 1;
+                                    p.last_center.replace(new_center);
+                                });
+                            } else if upward {
+                                // 向上走势终结
+                                // 寻找最高点作为向上走势结束点
+                                let end = if last_center.high.value > c.start.value {
+                                    last_center.high
+                                } else {
+                                    c.start.clone()
+                                };
+                                let new_start = end.clone();
+                                // 结束前走势
+                                self.complete_pending(move |p| TemporaryCompleted {
+                                    start: p.start,
+                                    end,
+                                    centers: p.centers,
+                                    level: std::cmp::max(p.level, c.level),
+                                });
+                                // 开始新走势
+                                self.push_pending(TemporaryPending {
+                                    start_idx: idx,
+                                    end_idx: idx,
+                                    start: new_start,
+                                    centers: 1,
+                                    last_center: Some(c.clone()),
+                                    upward: Some(false),
+                                    level: c.level,
+                                });
+                            } else {
+                                // 向下走势终结
+                                let end = if last_center.low.value < c.start.value {
+                                    last_center.low
+                                } else {
+                                    c.start.clone()
+                                };
+                                let new_start = end.clone();
+                                // 结束前走势
+                                self.complete_pending(move |p| TemporaryCompleted {
+                                    start: p.start,
+                                    end,
+                                    centers: p.centers,
+                                    level: std::cmp::max(p.level, c.level),
+                                });
+                                // 开始新走势
+                                self.push_pending(TemporaryPending {
+                                    start_idx: idx,
+                                    end_idx: idx,
+                                    start: new_start,
+                                    centers: 1,
+                                    last_center: Some(c.clone()),
+                                    upward: Some(true),
+                                    level: c.level,
+                                });
+                            }
+                        } else {
+                            // 走势存在中枢，方向不固定
+                            let last_center = p
+                                .last_center
+                                .as_ref()
+                                .cloned()
+                                .expect("last center in pending trend");
+                            if &c.shared_low.value > &last_center.shared_high.value {
+                                // 向上走势
+                                let new_center = c.clone();
+                                self.update_pending(move |p| {
+                                    p.end_idx = idx;
+                                    p.centers += 1;
+                                    p.last_center.replace(new_center);
+                                    p.upward.replace(true);
+                                });
+                            } else if &c.shared_high.value < &last_center.shared_low.value {
+                                // 向下走势
+                                let new_center = c.clone();
+                                self.update_pending(move |p| {
+                                    p.end_idx = idx;
+                                    p.centers += 1;
+                                    p.last_center.replace(new_center);
+                                    p.upward.replace(false);
+                                });
+                            } else {
+                                // 盘整，同级别切分为不同走势
+                                let end = c.start.clone();
+                                self.complete_pending(move |p| TemporaryCompleted {
+                                    start: p.start,
+                                    end,
+                                    centers: p.centers,
+                                    level: std::cmp::max(p.level, c.level),
+                                });
+                                self.push_pending(TemporaryPending {
+                                    start_idx: idx,
+                                    end_idx: idx,
+                                    start: c.start.clone(),
+                                    centers: 1,
+                                    last_center: Some(c.clone()),
+                                    upward: None,
+                                    level: c.level,
+                                });
+                            }
+                        }
+                    }
+                    _ => {
+                        self.update_pending(|p| {
+                            p.end_idx = idx;
+                        });
+                    }
+                }
+            }
+            _ => unreachable!(),
         }
     }
-    // todo
-    Ok(subtrends)
+
+    fn last(&self) -> Option<&TemporaryTrend> {
+        self.tmp.last()
+    }
+
+    fn remove_lastn(&mut self, n: usize) {
+        for _ in 0..n {
+            self.tmp.pop().unwrap();
+        }
+    }
+
+    fn push_pending(&mut self, pending: TemporaryPending) {
+        self.tmp.push(TemporaryTrend::Pending(pending));
+    }
+
+    fn update_pending<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut TemporaryPending),
+    {
+        if let Some(TemporaryTrend::Pending(pending)) = self.tmp.last_mut() {
+            f(pending);
+        }
+    }
+
+    fn complete_pending<F>(&mut self, f: F)
+    where
+        F: FnOnce(TemporaryPending) -> TemporaryCompleted,
+    {
+        if let Some(TemporaryTrend::Pending(pending)) = self.tmp.pop() {
+            self.tmp.push(TemporaryTrend::Completed(f(pending)));
+        }
+    }
+
+    fn trends(self, _centers: &[CenterElement]) -> Vec<Trend> {
+        self.tmp
+            .into_iter()
+            .filter_map(|t| match t {
+                TemporaryTrend::Pending(_) => None,
+                TemporaryTrend::Completed(cp) => Some(Trend {
+                    start: cp.start,
+                    end: cp.end,
+                    centers: cp.centers,
+                    level: cp.level,
+                }),
+            })
+            .collect()
+    }
 }
 
-fn segment_as_subtrend(sg: &Segment, tick: &str) -> Result<SubTrend> {
-    Ok(SubTrend{
-        start: ValuePoint{ts: align_tick(tick, sg.start_pt.extremum_ts)?, value: sg.start_pt.extremum_price.clone()},
-        end: ValuePoint{ts: align_tick(tick, sg.end_pt.extremum_ts)?, value: sg.end_pt.extremum_price.clone()},
-        level: 1,
+enum TemporaryTrend {
+    Pending(TemporaryPending),
+    Completed(TemporaryCompleted),
+}
+
+struct TemporaryPending {
+    start_idx: usize,
+    end_idx: usize,
+    centers: usize,
+    // 最后一个中枢
+    last_center: Option<Center>,
+    // 起始点，可能与start_idx不一致，是因为前一走势的极值点作为后一走势起点
+    start: ValuePoint,
+    // 方向固定向上或向下，None表示方向未固定
+    upward: Option<bool>,
+    level: i32,
+}
+
+struct TemporaryCompleted {
+    // start_idx: usize,
+    // end_idx: usize,
+    start: ValuePoint,
+    end: ValuePoint,
+    centers: usize,
+    level: i32,
+}
+
+pub fn trend_as_subtrend(trend: &Trend, tick: &str) -> Result<SubTrend> {
+    Ok(SubTrend {
+        start: ValuePoint {
+            ts: align_tick(tick, trend.start.ts)?,
+            value: trend.start.value.clone(),
+        },
+        end: ValuePoint {
+            ts: align_tick(tick, trend.end.ts)?,
+            value: trend.end.value.clone(),
+        },
+        level: trend.level + 1,
         typ: SubTrendType::Normal,
     })
-}
-
-fn stroke_as_subtrend(sk: &Stroke, tick: &str, typ: SubTrendType) -> Result<SubTrend> {
-    Ok(SubTrend{
-        start: ValuePoint{ts: align_tick(tick, sk.start_pt.extremum_ts)?, value: sk.start_pt.extremum_price.clone()},
-        end: ValuePoint{ts: align_tick(tick, sk.end_pt.extremum_ts)?, value: sk.end_pt.extremum_price.clone()},
-        level: 1,
-        typ,
-    })
-}
-
-// 尝试将增量的笔合并进已存在的次级别走势
-fn accumulate_strokes(subtrends: &mut Vec<SubTrend>, strokes: &[Stroke], tick: &str) -> Result<bool> {
-    if strokes.is_empty() {
-        return Ok(false);
-    }
-    if strokes.len() == 1 {
-        // 仅连续1笔
-        let sk = strokes.last().unwrap();
-        if sk.start_pt.right_gap.is_some() || sk.end_pt.left_gap.is_some() {
-            subtrends.push(stroke_as_subtrend(sk, tick, SubTrendType::Gap)?);
-            return Ok(true);
-        }
-    }
-    if strokes.len() == 2 {
-        let sk = strokes.last().unwrap();
-        if let Some(prev_st) = subtrends.last() {
-            let upward = prev_st.end.value > prev_st.start.value && sk.end_pt.extremum_price > prev_st.start.value;
-            let downward = prev_st.end.value < prev_st.start.value && sk.end_pt.extremum_price < prev_st.start.value;
-            if upward || downward {
-                let st = subtrends.last_mut().unwrap();
-                st.end.ts = align_tick(tick, sk.end_pt.extremum_ts)?;
-                st.end.value = sk.end_pt.extremum_price.clone();
-                st.typ = SubTrendType::Combination;
-                return Ok(true);
-            }
-        }
-    }
-    // 不处理2笔以上情况
-    Ok(false)
-}
-
-#[inline]
-fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
-    use tanglism_utils::{TradingTimestamps, LOCAL_DATES, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN, LOCAL_TS_1_MIN};
-    let aligned = match tick {
-        "1d" => LOCAL_DATES.aligned_tick(ts),
-        "30m" => LOCAL_TS_30_MIN.aligned_tick(ts),
-        "5m" => LOCAL_TS_5_MIN.aligned_tick(ts),
-        "1m" => LOCAL_TS_1_MIN.aligned_tick(ts),
-        _ => {
-            return Err(Error(format!("invalid tick: {}", tick)));
-        }
-    };
-    aligned.ok_or_else(|| Error(format!("invalid timestamp: {}", ts)))
 }

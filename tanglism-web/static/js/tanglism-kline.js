@@ -3,6 +3,7 @@
 
 export const kline = {
     data,
+    clear_data,
     conf,
     draw,
     clear_drawing,
@@ -93,6 +94,10 @@ function data(input) {
         return;
     }
     return _data;
+}
+
+function clear_data() {
+  while(_data.length > 0) { _data.pop(); }
 }
 
 // draw函数

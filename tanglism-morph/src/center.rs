@@ -1,8 +1,8 @@
-use crate::shape::{CenterElement, Center, SemiCenter, SubTrend};
+use crate::shape::{Center, CenterElement, SemiCenter, SubTrend};
 use bigdecimal::BigDecimal;
 
 /// 临时元素
-/// 
+///
 /// 用于标记尚未完成的中枢元素序列
 #[derive(Debug, Clone)]
 enum TemporaryElement {
@@ -63,7 +63,7 @@ pub fn unify_centers(subtrends: &[SubTrend]) -> Vec<CenterElement> {
 }
 
 /// 中枢策略
-/// 
+///
 /// 将次级别走势转化为中枢元素序列。
 /// 可使用不同测策略分析
 pub trait CenterStrategy {
@@ -72,7 +72,6 @@ pub trait CenterStrategy {
 
 struct Standard {
     tmp: Vec<TemporaryElement>,
-
 }
 
 impl CenterStrategy for Standard {
@@ -85,11 +84,8 @@ impl CenterStrategy for Standard {
 }
 
 impl Standard {
-
     fn new() -> Self {
-        Standard{
-            tmp: Vec::new(),
-        }
+        Standard { tmp: Vec::new() }
     }
 
     #[inline]
@@ -98,7 +94,7 @@ impl Standard {
             match elem {
                 TemporaryElement::Center(tc) => {
                     let tc = tc.clone();
-                    self.accumulate_after_center(subtrends, idx, tc);         
+                    self.accumulate_after_center(subtrends, idx, tc);
                 }
                 TemporaryElement::SubTrend(_) => {
                     self.accumulate_after_subtrend(subtrends, idx);
@@ -116,23 +112,30 @@ impl Standard {
     }
 
     fn centers(self, subtrends: &[SubTrend]) -> Vec<CenterElement> {
-        self.tmp.into_iter().map(|te| {
-            match te {
+        self.tmp
+            .into_iter()
+            .map(|te| match te {
                 TemporaryElement::Center(tc) => {
                     let mut c = center(&subtrends[tc.start_idx..=tc.end_idx]).unwrap();
                     if tc.extended_subtrends > 0 {
-                        c.end = subtrends[tc.end_idx+tc.extended_subtrends].end.clone();
+                        c.end = subtrends[tc.end_idx + tc.extended_subtrends].end.clone();
                         c.n += tc.extended_subtrends;
                     }
                     CenterElement::Center(c)
                 }
-                TemporaryElement::SubTrend(tst) => CenterElement::SubTrend(subtrends[tst.idx].clone()),
+                TemporaryElement::SubTrend(tst) => {
+                    CenterElement::SubTrend(subtrends[tst.idx].clone())
+                }
                 TemporaryElement::SemiCenter(tsc) => {
-                    let sc = semicenter(&subtrends[tsc.start_idx..=tsc.last_end_idx()], tsc.shared_start).unwrap();
+                    let sc = semicenter(
+                        &subtrends[tsc.start_idx..=tsc.last_end_idx()],
+                        tsc.shared_start,
+                    )
+                    .unwrap();
                     CenterElement::SemiCenter(sc)
-                },
-            }
-        }).collect()
+                }
+            })
+            .collect()
     }
 
     // 前一个元素是中枢
@@ -146,25 +149,37 @@ impl Standard {
     // 5. 次级别走势起点在中枢区间外，结束在中枢区间外，且跨越中枢区间：合并进中枢区间。
     // 当中枢仅3段时，需判断中枢是否迁移
     // todo: 中枢延伸至9段或以上的处理
-    fn accumulate_after_center(&mut self, subtrends: &[SubTrend], idx: usize, tmp_center: TemporaryCenter) {
+    fn accumulate_after_center(
+        &mut self,
+        subtrends: &[SubTrend],
+        idx: usize,
+        tmp_center: TemporaryCenter,
+    ) {
         let subtrend = &subtrends[idx];
         let center_data = &subtrends[tmp_center.start_idx..=tmp_center.end_idx];
         // 仅以前三段获取中枢区间
         let prev_center = center(center_data).expect("center created from subtrends");
         if tmp_center.extended_subtrends == 0 {
-            if let Some(_) = center(&subtrends[tmp_center.start_idx+1..=idx]) {
+            if let Some(_) = center(&subtrends[tmp_center.start_idx + 1..=idx]) {
                 // 当前段和中枢起始段相比，是否更靠近中枢区间
                 let subtrend0 = &subtrends[tmp_center.start_idx];
                 if !tmp_center.fixed {
                     let mid = (&prev_center.shared_high.value + &prev_center.shared_low.value) / 2;
-                    let diff0 = abs_diff(&subtrend0.start.value, &mid) + abs_diff(&subtrend0.end.value, &mid);
-                    let diff = abs_diff(&subtrend.start.value, &mid) + abs_diff(&subtrend.end.value, &mid);
+                    let diff0 = abs_diff(&subtrend0.start.value, &mid)
+                        + abs_diff(&subtrend0.end.value, &mid);
+                    let diff =
+                        abs_diff(&subtrend.start.value, &mid) + abs_diff(&subtrend.end.value, &mid);
                     if diff < diff0 {
                         // 中枢迁移
                         self.remove_lastn(1);
                         self.push_subtrend(tmp_center.start_idx, false);
                         // 移动一次后不允许再次移动
-                        let tc = TemporaryCenter{start_idx: tmp_center.end_idx-1, end_idx: idx, extended_subtrends: 0, fixed: true};
+                        let tc = TemporaryCenter {
+                            start_idx: tmp_center.end_idx - 1,
+                            end_idx: idx,
+                            extended_subtrends: 0,
+                            fixed: true,
+                        };
                         self.push_center(tc);
                         return;
                     }
@@ -226,15 +241,30 @@ impl Standard {
                 if let Some(c) = center3(subtrend1, subtrend2, subtrend) {
                     if st1.beside_semi {
                         // 起始段紧邻类中枢，该中枢固定不可移动
-                        let c = TemporaryCenter{start_idx: st1.idx, end_idx: idx, extended_subtrends: 0, fixed: true};
+                        let c = TemporaryCenter {
+                            start_idx: st1.idx,
+                            end_idx: idx,
+                            extended_subtrends: 0,
+                            fixed: true,
+                        };
                         self.remove_lastn(2);
                         self.push_center(c);
                     } else if c.semi() {
-                        let sc = TemporarySemiCenter{start_idx: st1.idx, end_idx: idx, extended_subtrends: 0, shared_start: false};
+                        let sc = TemporarySemiCenter {
+                            start_idx: st1.idx,
+                            end_idx: idx,
+                            extended_subtrends: 0,
+                            shared_start: false,
+                        };
                         self.remove_lastn(2);
                         self.push_semicenter(sc);
                     } else {
-                        let c = TemporaryCenter{start_idx: st1.idx, end_idx: idx, extended_subtrends: 0, fixed: false};
+                        let c = TemporaryCenter {
+                            start_idx: st1.idx,
+                            end_idx: idx,
+                            extended_subtrends: 0,
+                            fixed: false,
+                        };
                         self.remove_lastn(2);
                         self.push_center(c);
                     }
@@ -250,7 +280,12 @@ impl Standard {
                 if let Some(c) = center3(subtrend1, subtrend2, subtrend) {
                     if c.semi() {
                         let c1_extended_subtrends = c1.extended_subtrends;
-                        let sc = TemporarySemiCenter{start_idx: st1_idx, end_idx: idx, extended_subtrends: 0, shared_start: c1_extended_subtrends == 0};
+                        let sc = TemporarySemiCenter {
+                            start_idx: st1_idx,
+                            end_idx: idx,
+                            extended_subtrends: 0,
+                            shared_start: c1_extended_subtrends == 0,
+                        };
                         self.remove_lastn(1);
                         // 将中枢延伸最后一段去除
                         if c1_extended_subtrends > 0 {
@@ -262,7 +297,12 @@ impl Standard {
                     } else {
                         // 若前一中枢存在延伸，可以借取最后一段形成中枢
                         if c1.extended_subtrends > 0 {
-                            let c = TemporaryCenter{start_idx: st1_idx, end_idx: idx, extended_subtrends: 0, fixed: false};
+                            let c = TemporaryCenter {
+                                start_idx: st1_idx,
+                                end_idx: idx,
+                                extended_subtrends: 0,
+                                fixed: false,
+                            };
                             self.remove_lastn(1);
                             self.modify_last_center(|c| {
                                 c.extended_subtrends -= 1;
@@ -305,7 +345,12 @@ impl Standard {
     //    a) 如果类中枢延伸不少于两段，则剥离两段合成中枢，即类中枢迁移为中枢，该中枢不可移动
     //    b) 类中枢仅3段，则拆分为1段+合成中枢，该中枢不可移动
     // 2. 未形成中枢，以次级别走势插入
-    fn accumulate_after_semicenter(&mut self, subtrends: &[SubTrend], idx: usize, tmp_sc: TemporarySemiCenter) {
+    fn accumulate_after_semicenter(
+        &mut self,
+        subtrends: &[SubTrend],
+        idx: usize,
+        tmp_sc: TemporarySemiCenter,
+    ) {
         let subtrend = &subtrends[idx];
         let st2_idx = tmp_sc.last_end_idx();
         let st1_idx = st2_idx - 1;
@@ -317,14 +362,24 @@ impl Standard {
                 self.modify_last_semicenter(|sc| {
                     sc.extended_subtrends -= 2;
                 });
-                self.push_center(TemporaryCenter{start_idx: st1_idx, end_idx: idx, extended_subtrends: 0, fixed: true});
+                self.push_center(TemporaryCenter {
+                    start_idx: st1_idx,
+                    end_idx: idx,
+                    extended_subtrends: 0,
+                    fixed: true,
+                });
             } else {
                 // case 1-b
                 self.remove_lastn(1);
                 if !tmp_sc.shared_start {
                     self.push_subtrend(tmp_sc.start_idx, false);
                 }
-                self.push_center(TemporaryCenter{start_idx: st1_idx, end_idx: idx, extended_subtrends: 0, fixed: true});
+                self.push_center(TemporaryCenter {
+                    start_idx: st1_idx,
+                    end_idx: idx,
+                    extended_subtrends: 0,
+                    fixed: true,
+                });
             }
         } else {
             self.push_subtrend(idx, true);
@@ -344,7 +399,7 @@ impl Standard {
         if len < 2 {
             return None;
         }
-        Some((&self.tmp[len-2], &self.tmp[len-1]))
+        Some((&self.tmp[len - 2], &self.tmp[len - 1]))
     }
 
     #[allow(dead_code)]
@@ -353,7 +408,7 @@ impl Standard {
         if len < n {
             return None;
         }
-        Some(&self.tmp[len-n..])
+        Some(&self.tmp[len - n..])
     }
 
     fn remove_lastn(&mut self, n: usize) {
@@ -362,20 +417,29 @@ impl Standard {
         }
     }
 
-    fn modify_last_center<F>(&mut self, f: F) where F: FnOnce(&mut TemporaryCenter) {
+    fn modify_last_center<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut TemporaryCenter),
+    {
         if let Some(TemporaryElement::Center(tc)) = self.last1_mut() {
             f(tc)
         }
     }
 
-    fn modify_last_semicenter<F>(&mut self, f: F) where F: FnOnce(&mut TemporarySemiCenter) {
+    fn modify_last_semicenter<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut TemporarySemiCenter),
+    {
         if let Some(TemporaryElement::SemiCenter(tsc)) = self.last1_mut() {
             f(tsc)
         }
     }
 
     fn push_subtrend(&mut self, idx: usize, beside_semi: bool) {
-        self.tmp.push(TemporaryElement::SubTrend(TemporarySubTrend{idx, beside_semi}));
+        self.tmp.push(TemporaryElement::SubTrend(TemporarySubTrend {
+            idx,
+            beside_semi,
+        }));
     }
 
     fn push_semicenter(&mut self, tsc: TemporarySemiCenter) {
@@ -385,7 +449,6 @@ impl Standard {
     fn push_center(&mut self, tc: TemporaryCenter) {
         self.tmp.push(TemporaryElement::Center(tc));
     }
-
 }
 
 /// 由连续三段次级别走势构成中枢
@@ -448,7 +511,7 @@ fn semicenter(subtrends: &[SubTrend], shared_start: bool) -> Option<SemiCenter> 
     let end = subtrends.last().unwrap().end.clone();
     let upward = end.value > start.value;
     let n = subtrends.len();
-    Some(SemiCenter{
+    Some(SemiCenter {
         start,
         end,
         level,
@@ -465,23 +528,25 @@ trait CenterExt {
 
 impl CenterExt for Center {
     fn semi(&self) -> bool {
-        (self.start.value < self.shared_low.value && self.end.value > self.shared_high.value) 
-        || (self.start.value > self.shared_high.value && self.end.value < self.shared_low.value)
+        (self.start.value < self.shared_low.value && self.end.value > self.shared_high.value)
+            || (self.start.value > self.shared_high.value && self.end.value < self.shared_low.value)
     }
 }
 
 fn abs_diff(v1: &BigDecimal, v2: &BigDecimal) -> BigDecimal {
-    if v1 > v2 { v1 - v2 } else { v2 - v1 }
+    if v1 > v2 {
+        v1 - v2
+    } else {
+        v2 - v1
+    }
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shape::{SubTrendType, ValuePoint};
     use bigdecimal::BigDecimal;
     use chrono::NaiveDateTime;
-    use crate::shape::{SubTrendType, ValuePoint};
-
 
     #[test]
     fn test_center3_single() {
@@ -490,7 +555,8 @@ mod tests {
             ("2020-02-11 15:00", 11.0),
             ("2020-02-12 15:00", 10.5),
             ("2020-02-13 15:00", 11.5),
-        ].build(1);
+        ]
+        .build(1);
         let c = center3(&sts[0], &sts[1], &sts[2]).unwrap();
         assert_eq!(1, c.level);
         assert_eq!(new_ts("2020-02-10 15:00"), c.start.ts);
@@ -510,7 +576,8 @@ mod tests {
             ("2020-02-11 15:00", 15.5),
             ("2020-02-12 15:00", 14.5),
             ("2020-02-13 15:00", 15.2),
-        ].build(1);
+        ]
+        .build(1);
         let c = center3(&sts[0], &sts[1], &sts[2]).unwrap();
         assert_eq!(1, c.level);
         assert_eq!(new_ts("2020-02-10 15:00"), c.start.ts);
@@ -530,7 +597,8 @@ mod tests {
             ("2020-02-11 15:00", 10.2),
             ("2020-02-12 15:00", 9.5),
             ("2020-02-13 15:00", 9.8),
-        ].build(1);
+        ]
+        .build(1);
         assert!(center3(&sts[0], &sts[1], &sts[2]).is_none());
     }
 
@@ -541,7 +609,8 @@ mod tests {
             ("2020-02-11 15:00", 11.2),
             ("2020-02-12 15:00", 10.0),
             ("2020-02-13 15:00", 10.5),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         assert_eq!(3, cs.len());
         assert!(cs.iter().all(|c| c.center().is_none()));
@@ -555,7 +624,8 @@ mod tests {
             ("2020-02-11 15:00", 10.5),
             ("2020-02-12 15:00", 11.5),
             ("2020-02-13 15:00", 11.2),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         assert_eq!(2, cs.len());
         assert!(cs[0].semicenter().is_some());
@@ -570,15 +640,15 @@ mod tests {
             ("2020-02-11 15:00", 11.0),
             ("2020-02-12 15:00", 10.5),
             ("2020-02-13 15:00", 11.5),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         assert_eq!(2, cs.len());
-        assert!(cs[0].subtrend().is_some()); 
+        assert!(cs[0].subtrend().is_some());
         let c1 = cs[1].center().expect("expect center");
         assert_eq!(BigDecimal::from(10.5), c1.shared_low.value);
         assert_eq!(BigDecimal::from(11), c1.shared_high.value);
         assert_eq!(3, c1.n);
-           
     }
 
     #[test]
@@ -593,7 +663,8 @@ mod tests {
             ("2020-02-19 15:00", 8.5),
             ("2020-02-20 15:00", 8.2),
             ("2020-02-21 15:00", 9.5),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         // todo
         // assert_eq!(4, cs.len());
@@ -624,7 +695,8 @@ mod tests {
             ("2020-02-12 15:00", 10.5),
             ("2020-02-13 15:00", 11.5),
             ("2020-02-18 15:00", 10.8),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         assert_eq!(2, cs.len());
         assert!(cs[0].subtrend().is_some());
@@ -643,7 +715,8 @@ mod tests {
             ("2020-02-13 15:00", 11.5),
             ("2020-02-18 15:00", 9.0),
             ("2020-02-19 15:00", 12.0),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         assert_eq!(2, cs.len());
         assert!(cs[0].subtrend().is_some());
@@ -660,7 +733,8 @@ mod tests {
             ("2020-02-10 15:00", 11.0),
             ("2020-02-11 15:00", 11.5),
             ("2020-02-12 15:00", 10.0),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         assert_eq!(1, cs.len());
         let c0 = cs[0].semicenter().expect("expect semicenter");
@@ -677,7 +751,8 @@ mod tests {
             ("2020-02-12 15:00", 10.0),
             ("2020-02-13 15:00", 10.5),
             ("2020-02-18 15:00", 9.0),
-        ].build(1);
+        ]
+        .build(1);
         let cs = unify_centers(&sts);
         assert_eq!(1, cs.len());
         let c0 = cs[0].semicenter().expect("expect semicenter");
@@ -690,7 +765,7 @@ mod tests {
     }
 
     fn new_point(ts: &str, price: f64) -> ValuePoint {
-        ValuePoint{
+        ValuePoint {
             ts: new_ts(ts),
             value: BigDecimal::from(price),
         }
@@ -702,16 +777,19 @@ mod tests {
 
     impl<'a> BuildSubTrendVec for Vec<(&'a str, f64)> {
         fn build(self, level: i32) -> Vec<SubTrend> {
-            self.iter().zip(self.iter().skip(1)).map(|(start, end)| {
-                let start = new_point(start.0, start.1);
-                let end = new_point(end.0, end.1);
-                SubTrend{
-                    start,
-                    end,
-                    level,
-                    typ: SubTrendType::Normal,
-                }
-            }).collect()
+            self.iter()
+                .zip(self.iter().skip(1))
+                .map(|(start, end)| {
+                    let start = new_point(start.0, start.1);
+                    let end = new_point(end.0, end.1);
+                    SubTrend {
+                        start,
+                        end,
+                        level,
+                        typ: SubTrendType::Normal,
+                    }
+                })
+                .collect()
         }
     }
 }

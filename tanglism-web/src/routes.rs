@@ -1,10 +1,10 @@
 use crate::handlers::stocks;
 use crate::DbPool;
+use chrono::NaiveDate;
 use jqdata::JqdataClient;
 use serde_derive::*;
 use std::convert::Infallible;
 use warp::Filter;
-use chrono::NaiveDate;
 
 /// API入口
 pub fn api_route(
@@ -71,7 +71,7 @@ pub struct GetStockPricesParam {
 // todo
 
 // fn api_get_stock_prices(
-//     db: DbPool, 
+//     db: DbPool,
 //     jq: JqdataClient,
 // ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
 //     // GET /api/stock-prices/{tick}/{code}?start_dt=yyyy-mm-dd&end_dt=yyyy-mm-dd
@@ -86,10 +86,10 @@ pub struct GetStockPricesParam {
 // }
 
 // async fn get_stock_prices(
-//     tick: String, 
-//     code: String, 
-//     query: GetStockPricesParam, 
-//     db: DbPool, 
+//     tick: String,
+//     code: String,
+//     query: GetStockPricesParam,
+//     db: DbPool,
 //     jq: JqdataClient
 // ) -> Result<impl warp::Reply, warp::Rejection> {
 //     todo!()
