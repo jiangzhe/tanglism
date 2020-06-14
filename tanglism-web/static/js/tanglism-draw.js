@@ -4,6 +4,7 @@ import { segment } from './tanglism-segment.js';
 import { subtrend } from './tanglism-subtrend.js';
 import { center } from './tanglism-center.js';
 import { metric } from './tanglism-metric.js';
+import { trend } from "./tanglism-trend.js";
 
 export function draw() {
   var objs = new Set(query().objects);
@@ -23,6 +24,9 @@ export function draw() {
       .attr("height", conf.h);
 
   // 按顺序画图
+  if (objs.has("Trends")) {
+    trend.draw();
+  }
   if (objs.has("Centers")) {
     center.draw();
   }
@@ -60,9 +64,14 @@ export function setupWebsocketEvents(ws) {
         type: "MetricsCfg",
         data: ""
     }));
+    ws.send(JSON.stringify({
+        type: "TrendCfg",
+        data: trend_cfg()
+    }));
     // 触发事件
     // 基础配置
     $(".basic_trigger").change(function() {
+      clear_all_data();
       if (validate_basic_cfg()) {
         ws.send(JSON.stringify({
           type: "BasicCfg",
@@ -73,6 +82,8 @@ export function setupWebsocketEvents(ws) {
     });
     // 笔配置
     $(".stroke_trigger").change(function() {
+      // 影响stroke, segment, subtend, center和trend
+      clear_tanglism_data();
       ws.send(JSON.stringify({
         type: "StrokeCfg",
         data: stroke_cfg()
@@ -81,6 +92,18 @@ export function setupWebsocketEvents(ws) {
         send_query(ws);
       }
     });
+    // 走势配置
+    $(".trend_trigger").change(function() {
+      // 影响subtrend, center和trend
+      clear_trend_data();
+      ws.send(JSON.stringify({
+        type: "TrendCfg",
+        data: trend_cfg()
+      }));
+      if (validate_basic_cfg()) {
+        send_query(ws);
+      }
+    })
     // 形态配置
     $(".morph_trigger").change(function() {
       if (validate_basic_cfg()) {
@@ -121,6 +144,9 @@ function prepare_data(dataset) {
         } else if (dataset[i].type === "Centers") {
             var data = dataset[i].data.filter(function(d) {return d.type === "Center"}).map(function(d) {return d.data});
             center.data(data);
+            changed = true;
+        } else if (dataset[i].type === "Trends") {
+            trend.data(dataset[i].data);
             changed = true;
         } else if (dataset[i].type === "MACD") {
             metric.data("DIF", dataset[i].data.dif);
@@ -174,6 +200,11 @@ function stroke_cfg() {
   return stroke_cfg;
 }
 
+function trend_cfg() {
+  var trend_level = parseFloat($("#trend_level").val());
+  return "level:" + trend_level;
+}
+
 function query() {
   var objects = [];
   var requires = [];
@@ -201,6 +232,12 @@ function query() {
       requires.push("Centers");
     }
   }
+  if ($("#trend_draw").is(":checked")) {
+    objects.push("Trends");
+    if (trend.data().length === 0) {
+      requires.push("Trends");
+    }
+  }
   // 默认画出MACD
   objects.push("MACD");
   if (metric.data("MACD").length === 0) {
@@ -220,4 +257,21 @@ function send_query(ws) {
     type: "Query",
     data
   }));
+}
+
+function clear_all_data() {
+  kline.clear_data();
+  clear_tanglism_data();
+}
+
+function clear_tanglism_data() {
+  stroke.clear_data();
+  segment.clear_data();
+  clear_trend_data();
+}
+
+function clear_trend_data() {
+  subtrend.clear_data();
+  center.clear_data();
+  trend.clear_data();
 }

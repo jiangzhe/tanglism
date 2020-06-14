@@ -159,7 +159,7 @@ pub struct Gap {
 }
 
 /// 中枢元素
-/// 
+///
 /// 中枢与分型，笔，线段有很大的不同。
 /// 在一张连续的K线图中，中枢通常是离散分布。
 /// 中枢与中枢之间通过次级别（或以下）走势相连。
@@ -199,6 +199,70 @@ impl CenterElement {
         match self {
             CenterElement::SemiCenter(sc) => Some(sc),
             _ => None,
+        }
+    }
+
+    pub fn start(&self) -> &ValuePoint {
+        match self {
+            CenterElement::Center(c) => &c.start,
+            CenterElement::SemiCenter(sc) => &sc.start,
+            CenterElement::SubTrend(st) => &st.start,
+        }
+    }
+
+    pub fn end(&self) -> &ValuePoint {
+        match self {
+            CenterElement::Center(c) => &c.end,
+            CenterElement::SemiCenter(sc) => &sc.end,
+            CenterElement::SubTrend(st) => &st.end,
+        }
+    }
+
+    pub fn high(&self) -> &ValuePoint {
+        match self {
+            CenterElement::Center(c) => &c.high,
+            CenterElement::SemiCenter(sc) => {
+                if sc.start.value > sc.end.value {
+                    &sc.start
+                } else {
+                    &sc.end
+                }
+            }
+            CenterElement::SubTrend(st) => {
+                if st.start.value > st.end.value {
+                    &st.start
+                } else {
+                    &st.end
+                }
+            }
+        }
+    }
+
+    pub fn low(&self) -> &ValuePoint {
+        match self {
+            CenterElement::Center(c) => &c.low,
+            CenterElement::SemiCenter(sc) => {
+                if sc.start.value < sc.end.value {
+                    &sc.start
+                } else {
+                    &sc.end
+                }
+            }
+            CenterElement::SubTrend(st) => {
+                if st.start.value < st.end.value {
+                    &st.start
+                } else {
+                    &st.end
+                }
+            }
+        }
+    }
+
+    pub fn level(&self) -> i32 {
+        match self {
+            CenterElement::Center(c) => c.level,
+            CenterElement::SemiCenter(sc) => sc.level,
+            CenterElement::SubTrend(st) => st.level,
         }
     }
 }
@@ -243,7 +307,8 @@ impl Center {
 
     // 两个价格分别位于中枢区间两侧
     pub fn split_prices(&self, price1: &BigDecimal, price2: &BigDecimal) -> bool {
-        (price1 < &self.shared_low.value && price2 > &self.shared_high.value) || (price1 > &self.shared_high.value && price2 < &self.shared_low.value)
+        (price1 < &self.shared_low.value && price2 > &self.shared_high.value)
+            || (price1 > &self.shared_high.value && price2 < &self.shared_low.value)
     }
 
     // 是否是类中枢形态。类中枢的最高最低点分别为起始和结束点。
@@ -253,7 +318,7 @@ impl Center {
 }
 
 /// 类中枢
-/// 
+///
 /// 这里的类中枢与缠论略有不同。
 /// 连接两个中枢间的多段走势未构成标准中枢，则归为类中枢。
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -311,4 +376,12 @@ impl SubTrend {
             (self.end.clone(), self.start.clone())
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Trend {
+    pub start: ValuePoint,
+    pub end: ValuePoint,
+    pub centers: usize,
+    pub level: i32,
 }

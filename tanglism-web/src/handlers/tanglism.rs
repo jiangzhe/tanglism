@@ -5,9 +5,10 @@ use chrono::NaiveDateTime;
 use serde_derive::*;
 use std::str::FromStr;
 use tanglism_morph::{
-    ks_to_pts, sks_to_sgs, trend, center, StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, K, TrendConfig,
+    ks_to_pts, sks_to_sgs, trend_as_subtrend, unify_centers, unify_subtrends, unify_trends,
+    StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, TrendConfig, K,
 };
-use tanglism_morph::{CenterElement, Parting, Segment, Stroke, SubTrend};
+use tanglism_morph::{CenterElement, Parting, Segment, Stroke, SubTrend, Trend};
 use tanglism_utils::{LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,8 +54,7 @@ pub fn get_tanglism_strokes(
         "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, stroke_cfg).run()?,
         "1d" => StrokeShaper::new(&pts, &**LOCAL_DATES, stroke_cfg).run()?,
         _ => {
-            return Err(
-                Error::custom(
+            return Err(Error::custom(
                 ErrorKind::BadRequest,
                 format!("invalid tick: {}", &tick),
             ))
@@ -67,21 +67,45 @@ pub fn get_tanglism_segments(sks: &[Stroke]) -> Result<Vec<Segment>> {
     sks_to_sgs(&sks).map_err(Into::into)
 }
 
+// segments and strokes must be 1m ticked
 pub fn get_tanglism_subtrends(
     segments: &[Segment],
     strokes: &[Stroke],
     tick: &str,
+    level: i32,
 ) -> Result<Vec<SubTrend>> {
-    let data = trend::unify_subtrends(
-        segments,
-        strokes,
-        tick,
-    )?;
-    Ok(data)
+    if level < 1 {
+        return Err(Error::custom(
+            ErrorKind::BadRequest,
+            "minimal level is 1".to_owned(),
+        ));
+    }
+    if level == 1 {
+        let subtrends = unify_subtrends(segments, strokes, tick)?;
+        return Ok(subtrends);
+    }
+    log::debug!("unify subtrends with level {}", level);
+    let mut subtrends = unify_subtrends(segments, strokes, "1m")?;
+    for lv in 2..=level {
+        let centers = unify_centers(&subtrends);
+        let trends = unify_trends(&centers);
+        subtrends.clear();
+        for i in 0..trends.len() {
+            subtrends.push(trend_as_subtrend(
+                &trends[i],
+                if lv == level { tick } else { "1m" },
+            )?);
+        }
+    }
+    Ok(subtrends)
 }
 
 pub fn get_tanglism_centers(subtrends: &[SubTrend]) -> Result<Vec<CenterElement>> {
-    Ok(center::unify_centers(&subtrends))
+    Ok(unify_centers(&subtrends))
+}
+
+pub fn get_tanglism_trends(centers: &[CenterElement]) -> Result<Vec<Trend>> {
+    Ok(unify_trends(&centers))
 }
 
 pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
@@ -152,5 +176,5 @@ pub fn parse_trend_cfg(s: &str) -> Result<TrendConfig> {
             }
         }
     }
-    Ok(TrendConfig{level})
+    Ok(TrendConfig { level })
 }

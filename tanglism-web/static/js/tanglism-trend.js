@@ -1,6 +1,6 @@
 // 定义中枢相关函数
 // 依赖jquery, jquery-ui, d3, tanglism-common, tanglism-kline
-export const center = {
+export const trend = {
     data,
     clear_data,
     table,
@@ -44,7 +44,7 @@ function table() {
     table.append("thead")
       .append("tr")
       .selectAll("th")
-      .data(["起始时刻", "起始价格", "终止时刻", "终止价格", "区间最低", "区间最高", "最低", "最高", "方向"])
+      .data(["起始时刻", "起始价格", "终止时刻", "终止价格", "方向"])
       .enter()
       .append("th")
       .text(function(d) {return d;})
@@ -65,11 +65,7 @@ function table() {
           d.start.value, 
           d.end.ts, 
           d.end.value,
-          d.shared_low.value,
-          d.shared_high.value,
-          d.low.value,
-          d.high.value,
-          d.upward ? "上升" : "下降"
+          parseFloat(d.start.value) < parseFloat(d.end.value) ? "上升" : "下降"
         ];
       })
       .enter()
@@ -93,19 +89,15 @@ function clear_table() {
 
 function draw(config) {
     // 是否在图中显示线段
-    var center_draw_check = $("#center_draw").is(":checked");
-    if (!center_draw_check) {
+    var trend_draw_check = $("#trend_draw").is(":checked");
+    if (!trend_draw_check) {
       return;
     }
     if (_outdate) {
-      console.log("center outdate");
+      console.log("trend outdate");
       return;
     }
     var conf = config || kline.conf();
-    // 无K线图，直接退出
-    // if (d3.select("#k_lines").empty()) {
-    //   return;
-    // }
     // 无K线数据或中枢数据，直接退出
     if (kline.data().length == 0 || _data.length == 0) {
       return;
@@ -136,33 +128,33 @@ function draw(config) {
     }
 
     // 过滤出所有匹配上的线段
-    var centers = [];
+    var trends = [];
     for (var i = 0; i < _data.length; i++) {
       var item = _data[i];
       if (item.hasOwnProperty("start_id") && item.hasOwnProperty("end_id")) {
-        centers.push(item);
+        trends.push(item);
       }
     }
     var svg = d3.select("#k_lines");
-    svg.selectAll("rect.center")
-        .data(centers)
+    svg.selectAll("rect.trend")
+        .data(trends)
         .enter()
         .append("rect")
-        .attr("class", "center")
+        .attr("class", "trend")
         .attr("x", function(d, i) {
             return d.start_id * conf.bar_width;
         })
-        .attr("y", function(d, i) {
-            return conf.h - conf.yscale(d.shared_high.value);
-        })
+        .attr("y", 0)
         .attr("width", function(d) {
             return conf.bar_width * (d.end_id - d.start_id);
         })
         .attr("height", function(d) {
-            return Math.max(1, Math.abs(conf.yscale(d.shared_high.value) - conf.yscale(d.shared_low.value)));
+            return conf.h;
         })
-        .attr("fill", "gold")
-        .attr("opacity", 0.5);
+        .attr("fill", function(d) {
+            return parseFloat(d.start.value) < parseFloat(d.end.value) ? "red" : "green";
+        })
+        .attr("opacity", 0.1);
 };
 
 function outdate() {

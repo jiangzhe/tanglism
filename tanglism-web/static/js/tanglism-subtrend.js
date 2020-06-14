@@ -2,6 +2,7 @@
 // 依赖jquery, jquery-ui, d3, tanglism-common, tanglism-kline
 export const subtrend = {
     data,
+    clear_data,
     table,
     clear_table,
     draw,
@@ -23,6 +24,11 @@ function data(input) {
       return;
     }
     return _data;
+}
+
+function clear_data() {
+  while(_data.length > 0) { _data.pop(); }
+  _outdate = true;
 }
 
 function table() {
@@ -152,12 +158,6 @@ function draw(config) {
         .attr("y2", function(d) {
             return conf.h - conf.yscale(parseFloat(d.end.value));
         })
-        // .attr("stroke", function(d) {
-        //   return d.level === 1 ? "violet" : "purple";
-        // })
-        // .attr("stroke-width", function(d) {
-        //   return d.level === 1 ? 1 : 2;
-        // })
         .attr("stroke", "purple")
         .attr("stroke-width", 2)
         .on("mouseover", function(d) {

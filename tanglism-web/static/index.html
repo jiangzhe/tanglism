@@ -39,11 +39,14 @@
                         <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening" class="stroke_trigger"/>
                         <label for="gap_opening_check">开盘跳空缺口成笔</label>
                         <input type="radio" id="gap_ratio_check" name="stroke_logic_gap" value="gap_ratio" class="stroke_trigger"/>
-                        <label for="gap_ratio_check">跳空缺口幅度成笔</label>    
+                        <label for="gap_ratio_check">跳空缺口幅度成笔</label>
                         <span id="gap_ratio_percentage_span" style="display:none">
                             <input type="number" id="gap_ratio_percentage" value="1.0" step="0.1" min="0.1" class="stroke_trigger"/>
                             <label for="gap_ratio_percentage">%</label>
                         </span>
+                        <br/>
+                        <label>走势级别：</label>
+                        <input type="number" id="trend_level" value="1" step="1" min="1" max="2" class="trend_trigger"/>
                         <br/>
                     </fieldset>
                 </div>
@@ -74,6 +77,8 @@
                         <label for="subtrend_draw">次级别</label>
                         <input type="checkbox" id="center_draw" value="center_draw" class="morph_trigger" checked/>
                         <label for="center_draw">中枢</label>
+                        <input type="checkbox" id="trend_draw" value="trend_draw" class="morph_trigger" checked/>
+                        <label for="trend_draw">级别</label>
                     </fieldset>
                 </div>
                 <div id="s_container">

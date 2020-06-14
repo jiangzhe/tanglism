@@ -6,7 +6,7 @@ use crate::{DbPool, Error, ErrorKind, Result};
 use jqdata::JqdataClient;
 use serde_derive::*;
 use std::collections::BTreeSet;
-use tanglism_morph::{CenterElement, Segment, Stroke, StrokeConfig, SubTrend, TrendConfig};
+use tanglism_morph::{CenterElement, Segment, Stroke, StrokeConfig, SubTrend, Trend, TrendConfig};
 use tanglism_utils::parse_ts_from_str;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -49,6 +49,8 @@ pub enum Data {
     SubTrendsNoChange,
     Centers(Vec<CenterElement>),
     CentersNoChange,
+    Trends(Vec<Trend>),
+    TrendsNoChange,
     MACD(MacdMetric),
     MACDNoChange,
 }
@@ -63,6 +65,8 @@ pub enum QueryObject {
     SubTrends,
     // 中枢
     Centers,
+    // 走势
+    Trends,
     // MACD指标
     MACD,
 }
@@ -82,6 +86,7 @@ pub struct Session {
     segments: Option<Vec<Segment>>,
     subtrends: Option<Vec<SubTrend>>,
     centers: Option<Vec<CenterElement>>,
+    trends: Option<Vec<Trend>>,
     // DIF/DEA/MACD
     macd: Option<metrics::MacdMetric>,
 }
@@ -101,6 +106,7 @@ impl Session {
             segments: None,
             subtrends: None,
             centers: None,
+            trends: None,
             macd: None,
         }
     }
@@ -254,6 +260,16 @@ impl Session {
                         dataset.push(Data::CentersNoChange);
                     }
                 }
+                if queries.contains(&QueryObject::Trends) {
+                    self.ensure_subtrends().await?;
+                    self.ensure_centers()?;
+                    if self.ensure_trends()? || refresh || requires.contains(&QueryObject::Trends) {
+                        let d = Data::Trends(self.trends.as_ref().cloned().unwrap_or_default());
+                        dataset.push(d);
+                    } else {
+                        dataset.push(Data::TrendsNoChange);
+                    }
+                }
                 if queries.contains(&QueryObject::MACD) {
                     if self.ensure_macd().await? || refresh || requires.contains(&QueryObject::MACD)
                     {
@@ -280,12 +296,14 @@ impl Session {
         self.segments.take();
         self.subtrends.take();
         self.centers.take();
+        self.trends.take();
     }
 
     #[inline]
     fn clear_trend_cache(&mut self) {
         self.subtrends.take();
         self.centers.take();
+        self.trends.take();
     }
 
     #[inline]
@@ -296,7 +314,6 @@ impl Session {
     // 检查并更新K线，返回更新标签
     async fn ensure_ks(&mut self) -> Result<bool> {
         if self.ks.is_none() {
-            // let ks_params = self.parse_basic_cfg()?;
             if let Some(ref basic_cfg) = self.basic_cfg {
                 let ks = stock_prices::get_stock_tick_prices(
                     &self.db,
@@ -354,29 +371,13 @@ impl Session {
     // 检查并更新次级别走势，返回更新标签
     async fn ensure_subtrends(&mut self) -> Result<bool> {
         if self.subtrends.is_none() {
-            if let (Some(ref basic_cfg), Some(ref stroke_cfg)) = (&self.basic_cfg, &self.stroke_cfg)
+            if let (Some(ref basic_cfg), Some(ref stroke_cfg), Some(ref trend_cfg)) =
+                (&self.basic_cfg, &self.stroke_cfg, &self.trend_cfg)
             {
                 // 次级别K线
                 // 取次级别tick
                 let tick = basic_cfg.tick.as_ref();
-                // let subtick = match tick {
-                //     "1d" => "30m",
-                //     "30m" => "5m",
-                //     "5m" => "1m",
-                //     "1m" => {
-                //         return Err(Error::custom(
-                //             ErrorKind::BadRequest,
-                //             "tick 1m cannot have subtrends".to_owned(),
-                //         ))
-                //     }
-                //     _ => {
-                //         return Err(Error::custom(
-                //             ErrorKind::BadRequest,
-                //             format!("invalid tick: {}", tick),
-                //         ))
-                //     }
-                // };
-                log::debug!("Support 1m subtrend only");
+                // 次级别走势总是由1分钟K线递归而来
                 let subtick = "1m";
                 // 无法重用K线是因为级别不同
                 let prices = stock_prices::get_stock_tick_prices(
@@ -392,7 +393,8 @@ impl Session {
                 let strokes =
                     tanglism::get_tanglism_strokes(&partings, subtick, stroke_cfg.clone())?;
                 let segments = tanglism::get_tanglism_segments(&strokes)?;
-                let subtrends = tanglism::get_tanglism_subtrends(&segments, &strokes, &tick)?;
+                let subtrends =
+                    tanglism::get_tanglism_subtrends(&segments, &strokes, &tick, trend_cfg.level)?;
                 self.subtrends.replace(subtrends);
                 return Ok(true);
             }
@@ -400,11 +402,24 @@ impl Session {
         Ok(false)
     }
 
+    // 检查并更新中枢，返回更新标签。中枢依赖次级别走势
     fn ensure_centers(&mut self) -> Result<bool> {
         if self.centers.is_none() {
             if let Some(ref subtrends) = self.subtrends {
                 let centers = tanglism::get_tanglism_centers(subtrends)?;
                 self.centers.replace(centers);
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    // 检查并更新走势，返回更新标签。走势依赖中枢及次级别走势
+    fn ensure_trends(&mut self) -> Result<bool> {
+        if self.trends.is_none() {
+            if let Some(ref centers) = self.centers {
+                let trends = tanglism::get_tanglism_trends(centers)?;
+                self.trends.replace(trends);
                 return Ok(true);
             }
         }
