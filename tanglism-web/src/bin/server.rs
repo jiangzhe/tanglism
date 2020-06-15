@@ -1,3 +1,5 @@
+//! Server application of tanglism stock analysis
+
 use dotenv::dotenv;
 use std::env;
 use structopt::StructOpt;

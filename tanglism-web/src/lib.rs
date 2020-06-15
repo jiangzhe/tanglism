@@ -4,7 +4,7 @@
 extern crate diesel;
 
 mod errors;
-mod handlers;
+pub mod handlers;
 pub mod models;
 mod routes;
 pub mod schema;
@@ -23,7 +23,7 @@ pub use errors::{Error, ErrorKind};
 pub type Result<T> = std::result::Result<T, Error>;
 
 // use r2d2 to manage Postgres connections
-type DbPool = r2d2::Pool<ConnectionManager<PgConnection>>;
+pub type DbPool = r2d2::Pool<ConnectionManager<PgConnection>>;
 
 // 股票基础配置
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -64,7 +64,7 @@ pub async fn server(host: &str, port: u16, dburl: &str, jqaccount: &str) -> Resu
     Ok(())
 }
 
-fn parse_jqaccount(account: &str) -> Result<(String, String)> {
+pub fn parse_jqaccount(account: &str) -> Result<(String, String)> {
     let splits: Vec<&str> = account.split('/').collect();
     if splits.len() != 2 {
         return Err(Error::Custom(
