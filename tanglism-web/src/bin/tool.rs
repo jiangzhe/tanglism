@@ -9,7 +9,12 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{self, ConnectionManager};
 use std::time::Duration;
 use tanglism_web::handlers::stocks::search_keyword_stocks;
+use tanglism_web::handlers::stock_prices::get_stock_tick_prices;
+use tanglism_utils::parse_ts_from_str;
 use async_trait::async_trait;
+use tokio::sync::Mutex;
+use std::sync::Mutex as StdMutex;
+use chrono::Local;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,7 +34,7 @@ async fn main() -> Result<()> {
         env::var("JQDATA_ACCOUNT").expect("JQDATA_ACCOUNT should not be empty")
     };
 
-    let tool = Tool::new(&dburl, &jqaccount).await?;
+    let mut tool = Tool::new(dburl, jqaccount);
     tool.exec(opt.cmd).await?;
     Ok(())
 }
@@ -48,7 +53,10 @@ pub struct ToolOpt {
 #[derive(Debug, StructOpt)]
 pub enum ToolCmd {
     Count,
-    Query {
+    Stock {
+        code: String,
+    },
+    Price {
         code: String,
         tick: String,
         #[structopt(short, long, help = "specify start time of this query")]
@@ -60,38 +68,80 @@ pub enum ToolCmd {
 }
 
 pub struct Tool {
-    db: DbPool,
-    jq: JqdataClient,
+    dburl: String,
+    jqaccount: String,
+    db: StdMutex<Option<DbPool>>,
+    jq: Mutex<Option<JqdataClient>>,
 }
 
 impl Tool {
-    pub async fn new(dburl: &str, jqaccount: &str) -> Result<Self> {
-        let manager = ConnectionManager::<PgConnection>::new(dburl);
-        let db = r2d2::Pool::builder()
-            .connection_timeout(Duration::from_secs(3))
-            .build(manager)
-            .expect("Failed to create db connection pool");
-        let (jqmob, jqpwd) = parse_jqaccount(&jqaccount)?;
-        let jq = JqdataClient::with_credential(jqmob, jqpwd).await?;
-        Ok(Tool{db, jq})
+    pub fn new(dburl: String, jqaccount: String) -> Self {
+        Tool{ dburl, jqaccount, db: StdMutex::new(None), jq: Mutex::new(None) }
+    }
+
+    async fn jq(&self) -> Result<JqdataClient> {
+        let mut lock = self.jq.lock().await;
+        match &*lock {
+            Some(jq) => Ok(jq.clone()),
+            None => {
+                let (jqmob, jqpwd) = parse_jqaccount(&self.jqaccount)?;
+                let jq = JqdataClient::with_credential(jqmob, jqpwd).await?;
+                lock.replace(jq);
+                Ok(lock.as_ref().unwrap().clone())
+            }
+        }
+    }
+
+    fn db(&self) -> Result<DbPool> {
+        let mut lock = self.db.lock().unwrap();
+        match &*lock {
+            Some(db) => Ok(db.clone()),
+            None => {
+                let manager = ConnectionManager::<PgConnection>::new(&self.dburl);
+                let db = r2d2::Pool::builder()
+                    .connection_timeout(Duration::from_secs(3))
+                    .build(manager)?;
+                lock.replace(db);
+                Ok(lock.as_ref().unwrap().clone())
+            }
+        }
     }
 }
 
 #[async_trait]
 pub trait ToolCmdExec {
-    async fn exec(&self, cmd: ToolCmd) -> Result<()>;
+    async fn exec(&mut self, cmd: ToolCmd) -> Result<()>;
 }
 
 #[async_trait]
 impl ToolCmdExec for Tool {
-    async fn exec(&self, cmd: ToolCmd) -> Result<()> {
+    async fn exec(&mut self, cmd: ToolCmd) -> Result<()> {
         match cmd {
             ToolCmd::Count => {
-                let count = self.jq.execute(GetQueryCount{}).await?;
+                let count = self.jq().await?.execute(GetQueryCount{}).await?;
                 println!("{}", count);
             }
-            ToolCmd::Query { code, tick, start, end } => {
-                
+            ToolCmd::Stock { code } => {
+                let stocks = search_keyword_stocks(self.db()?, code).await?;
+                for s in &stocks {
+                    println!("{:15}{:15}{:15}", s.code, s.display_name, s.end_date);
+                }
+            }
+            ToolCmd::Price { code, tick, start, end } => {
+                let (start_ts, _) = parse_ts_from_str(&start)?;
+                let end_ts: chrono::NaiveDateTime = if let Some(end_str) = end.as_ref() {
+                    let (ts, _) = parse_ts_from_str(&end_str)?;
+                    ts
+                } else {
+                    let local_ts = Local::today().and_hms(0, 0, 0) - chrono::Duration::seconds(1);
+                    local_ts.naive_local()
+                };
+                let db = self.db()?;
+                let jq = &self.jq().await?;
+                let prices = get_stock_tick_prices(&db, &jq, &tick, &code, start_ts, end_ts).await?;
+                for p in &prices {
+                    println!("{:21}{:8.2}{:8.2}{:8.2}{:8.2}{:18.2}{:18.2}", p.ts, p.open, p.close, p.high, p.low, p.volume, p.amount);
+                }
             }
             _ => unimplemented!("other commands are not implemented"),
         }
