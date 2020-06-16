@@ -5,11 +5,11 @@ use serde_derive::*;
 
 #[derive(Queryable, Debug, Serialize, Deserialize, Clone)]
 pub struct Stock {
-    code: String,
-    display_name: String,
-    name: String,
-    start_date: NaiveDate,
-    end_date: NaiveDate,
+    pub code: String,
+    pub display_name: String,
+    pub name: String,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
 }
 type StockColumns = (
     securities::code,
