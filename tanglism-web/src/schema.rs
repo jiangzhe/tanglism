@@ -6,6 +6,7 @@ table! {
         start_date -> Date,
         end_date -> Date,
         tp -> Varchar,
+        msci -> Bool,
     }
 }
 

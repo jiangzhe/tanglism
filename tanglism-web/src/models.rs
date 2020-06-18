@@ -17,6 +17,7 @@ pub struct Security {
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
     pub tp: String,
+    pub msci: bool,
 }
 
 #[allow(dead_code)]

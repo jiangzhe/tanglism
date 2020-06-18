@@ -89,10 +89,8 @@ pub async fn get_stock_tick_prices(
 
     // 检查已抓取的数据区间
     let period = {
-        let code = Arc::clone(&code);
-        let tick = Arc::clone(&tick);
         let pool = pool.clone();
-        tokio::task::spawn_blocking(move || query_db_period(&pool, &tick, &code)).await??
+        query_db_period(&pool, &tick, &code).await?
     };
     if let Some(period) = period {
         // 数据库中存在时间段，说明已进行过查询，则仅进行增量查询并插入
@@ -214,22 +212,26 @@ fn jq_price_to_tick_price(tick: &str, code: &str, p: jqdata::Price) -> Result<St
     Ok(dp)
 }
 
-pub fn query_db_period(
+pub async fn query_db_period(
     pool: &DbPool,
     input_tick: &str,
     input_code: &str,
 ) -> Result<Option<StockPriceTick>> {
     use crate::schema::stock_price_ticks::dsl::*;
     use diesel::prelude::*;
+
     let conn = pool.get()?;
-    match stock_price_ticks
-        .find((input_tick, input_code))
-        .first(&conn)
-    {
-        Ok(rs) => Ok(Some(rs)),
-        Err(diesel::result::Error::NotFound) => Ok(None),
-        Err(err) => Err(err.into()),
-    }
+    let input_tick = input_tick.to_owned();
+    let input_code = input_code.to_owned();
+    tokio::task::spawn_blocking(move || {
+        match stock_price_ticks
+        .find((&input_tick, &input_code))
+        .first(&conn) {
+            Ok(rs) => Ok(Some(rs)),
+            Err(diesel::result::Error::NotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }).await?
 }
 
 #[derive(Debug)]
