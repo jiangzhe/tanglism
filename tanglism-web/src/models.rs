@@ -8,7 +8,6 @@ pub struct TradeDay {
     pub dt: NaiveDate,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Queryable)]
 pub struct Security {
     pub code: String,
@@ -18,6 +17,7 @@ pub struct Security {
     pub end_date: NaiveDate,
     pub tp: String,
     pub msci: bool,
+    pub hs300: bool,
 }
 
 #[allow(dead_code)]

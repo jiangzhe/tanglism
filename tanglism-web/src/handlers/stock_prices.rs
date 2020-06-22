@@ -57,7 +57,7 @@ pub async fn get_stock_tick_prices(
 ) -> Result<Vec<ticks::StockPrice>> {
     // 仅支持1m, 5m, 30m, 1d
     let tick = match tick {
-        "1m" | "5m" | "30m" | "1d" => Arc::new(tick.to_owned()),
+        "1m" | "5m" | "30m" | "1d" => tick.to_owned(),
         _ => {
             return Err(Error::custom(
                 ErrorKind::BadRequest,
@@ -78,7 +78,7 @@ pub async fn get_stock_tick_prices(
         ));
     }
 
-    let code = Arc::new(code.to_owned());
+    let code = code.to_owned();
 
     // 禁止多线程同时读写price表
     let pa = {
@@ -140,15 +140,16 @@ pub async fn get_stock_tick_prices(
         .await?;
     }
     let data = {
-        let tick = Arc::clone(&tick);
-        let code = Arc::clone(&code);
-        let pool = pool.clone();
         let start_dt = start_ts.date();
         let end_dt = end_ts.date();
-        tokio::task::spawn_blocking(move || {
-            ticks::query_db_prices(&pool, &tick, &code, start_dt, end_dt)
-        })
-        .await??
+        ticks::query_db_prices(
+            pool.clone(),
+            tick.to_owned(),
+            code.to_owned(),
+            start_dt,
+            end_dt,
+        )
+        .await?
     };
     Ok(data)
 }
@@ -225,13 +226,15 @@ pub async fn query_db_period(
     let input_code = input_code.to_owned();
     tokio::task::spawn_blocking(move || {
         match stock_price_ticks
-        .find((&input_tick, &input_code))
-        .first(&conn) {
+            .find((&input_tick, &input_code))
+            .first(&conn)
+        {
             Ok(rs) => Ok(Some(rs)),
             Err(diesel::result::Error::NotFound) => Ok(None),
             Err(err) => Err(err.into()),
         }
-    }).await?
+    })
+    .await?
 }
 
 #[derive(Debug)]

@@ -11,7 +11,8 @@
         <div id="tabs">
             <ul>
                 <li><a href="#single">个股</a></li>
-                <li><a href="#multiple">选股</a></li>
+                <li><a href="#atr">ATR</a></li>
+                <li><a href="#choice">机会</a></li>
             </ul>
             <div id="single">
                 <div id="search_bar" style="margin-bottom: 20px">
@@ -22,21 +23,22 @@
                         <label>结束日期：</label><input type="text" id="input_end_dt" autocomplete="off" class="basic_trigger"/>
                         <label>周期：</label>
                         <select id="input_tick" class="basic_trigger">
+                            <option>1m</option>
                             <option>5m</option>
                             <option selected>30m</option>
                             <option>1d</option>
                         </select>
                         <br/>
                         <label>独立K线成笔：</label>
-                        <input type="radio" id="indep_k_check" name="stroke_logic_indep_k" value="indep_k" class="stroke_trigger" checked/>
+                        <input type="radio" id="indep_k_check" name="stroke_logic_indep_k" value="indep_k" class="stroke_trigger"/>
                         <label for="indep_k_check">检查独立K线</label>
-                        <input type="radio" id="non_indep_k_check" name="stroke_logic_indep_k" class="stroke_trigger" value="non_indep_k"/>
+                        <input type="radio" id="non_indep_k_check" name="stroke_logic_indep_k" class="stroke_trigger" value="non_indep_k" checked/>
                         <label for="non_indep_k_check">不检查独立K线</label>
                         <br/>
                         <label>缺口成笔：</label>
-                        <input type="radio" id="gap_none_check" name="stroke_logic_gap" value="gap_none" class="stroke_trigger" checked/>
+                        <input type="radio" id="gap_none_check" name="stroke_logic_gap" value="gap_none" class="stroke_trigger"/>
                         <label for="gap_none_check">无</label>
-                        <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening" class="stroke_trigger"/>
+                        <input type="radio" id="gap_opening_check" name="stroke_logic_gap" value="gap_opening" class="stroke_trigger" checked/>
                         <label for="gap_opening_check">开盘跳空缺口成笔</label>
                         <input type="radio" id="gap_ratio_check" name="stroke_logic_gap" value="gap_ratio" class="stroke_trigger"/>
                         <label for="gap_ratio_check">跳空缺口幅度成笔</label>
@@ -97,6 +99,50 @@
                     <div id="st_container" style="margin-bottom: 20px"></div>
                     <div id="cr_container" style="margin-bottom: 20px"></div>
                 </div>
+            </div>
+            <!-- <div id="multiple">
+                <div id="selection_parameter_bar" style="margin-bottom: 20px">
+                    <fieldset id="selection_fieldset">
+                        <legend>选股参数</legend>
+                        <label>级别：</label>
+                        <input type="checkbox" id="select_level1_check" value="select_level1_check" checked disabled/>
+                        <label for="select_level1_check">级别1</label>
+                        <br/>
+                        <label>买点：</label>
+                        <input type="checkbox" id="select_buy1_check" value="select_buy1_check" checked/>
+                        <label for="select_buy1_check">一买</label>
+                    </fieldset>
+                </div>
+            </div> -->
+            <div id="atr">
+                <div id="atr_parameter_bar" style="margin-bottom: 20px">
+                    <fieldset id="atr_fieldset" style="margin-bottom: 20px">
+                        <legend>ATR参数</legend>
+                        <label>周期</label>
+                        <input type="number" id="atr_days_input" value="22" min="1" step="1"/>
+                        <label for="atr_days_input">天</label>
+                        <br/>
+                    </fieldset>
+                    <input type="button" id="atr_submit" value="提交"/>
+                </div>
+                <div id="atr_container"></div>
+            </div>
+            <div id="choice">
+                <div id="choice_parameter_bar" style="margin-bottom: 20px">
+                    <fieldset id="choice_fieldset" style="margin-bottom: 20px">
+                        <legend>选股参数</legend>
+                        <label>周期</label>
+                        <input type="number" id="choice_days_input" value="22" min="1" step="1"/>
+                        <label for="choice_days_input">天</label>
+                        <br/>
+                        <label>股票数</label>
+                        <input type="number" id="choice_stocks_input" value="10" min="1" step="1"/>
+                        <label for="choice_stocks_input">天</label>
+                        <br/>
+                    </fieldset>
+                    <input type="button" id="choice_submit" value="提交"/>
+                </div>
+                <div id="choice_container"></div>
             </div>
         </div>
         <script src="./js/jquery-3.4.1.min.js"></script>

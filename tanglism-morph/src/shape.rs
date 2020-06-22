@@ -13,59 +13,6 @@ pub struct K {
     pub high: BigDecimal,
 }
 
-/// 合并K线
-///
-/// 合并K线，当相邻K线出现包含关系时，合并为一根K线
-/// 包含原则简述：假设a, b为相邻K线，当a的最高价比b的最高价高，且a的最低价比b的最
-/// 低价低时，满足包含原则，两K线可视为1条K线。在上升时，取两高点的高点为新K线高点，
-/// 取两低点的高点为新K线低点。在下降时，取两高点的低点为新K线高点，取两低点的低点
-/// 为新K线的低点。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CK {
-    pub start_ts: NaiveDateTime,
-    pub end_ts: NaiveDateTime,
-    pub extremum_ts: NaiveDateTime,
-    pub low: BigDecimal,
-    pub high: BigDecimal,
-    pub n: i32,
-    // 价格区间，用于进行缺口判断
-    pub price_range: Option<Box<PriceRange>>,
-}
-
-impl CK {
-    #[inline]
-    pub fn start_high(&self) -> &BigDecimal {
-        self.price_range
-            .as_ref()
-            .map(|pr| &pr.start_high)
-            .unwrap_or(&self.high)
-    }
-
-    #[inline]
-    pub fn start_low(&self) -> &BigDecimal {
-        self.price_range
-            .as_ref()
-            .map(|pr| &pr.start_low)
-            .unwrap_or(&self.low)
-    }
-
-    #[inline]
-    pub fn end_high(&self) -> &BigDecimal {
-        self.price_range
-            .as_ref()
-            .map(|pr| &pr.end_high)
-            .unwrap_or(&self.high)
-    }
-
-    #[inline]
-    pub fn end_low(&self) -> &BigDecimal {
-        self.price_range
-            .as_ref()
-            .map(|pr| &pr.end_low)
-            .unwrap_or(&self.low)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceRange {
     // 起始最高价
@@ -119,14 +66,16 @@ pub struct Stroke {
     pub end_pt: Parting,
 }
 
-/// 合并笔
-///
-/// 在特征序列相邻笔出现包含关系时，合并为一笔
-/// 此时笔并不具有方向性
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CStroke {
-    pub high_pt: Parting,
-    pub low_pt: Parting,
+impl Stroke {
+    #[inline]
+    pub fn start_price(&self) -> &BigDecimal {
+        &self.start_pt.extremum_price
+    }
+
+    #[inline]
+    pub fn end_price(&self) -> &BigDecimal {
+        &self.end_pt.extremum_price
+    }
 }
 
 /// 线段
@@ -147,6 +96,18 @@ pub struct Segment {
     pub end_pt: Parting,
 }
 
+impl Segment {
+    #[inline]
+    pub fn start_price(&self) -> &BigDecimal {
+        &self.start_pt.extremum_price
+    }
+
+    #[inline]
+    pub fn end_price(&self) -> &BigDecimal {
+        &self.end_pt.extremum_price
+    }
+}
+
 /// 缺口
 ///
 /// 缠论的基础概念
@@ -165,6 +126,7 @@ pub struct Gap {
 /// 中枢与中枢之间通过次级别（或以下）走势相连。
 /// 因此中枢分析产生的序列既包含中枢，也包含次级别走势乃至缺口
 /// 这里统一使用CenterElement枚举进行建模
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", content = "data")]
 pub enum CenterElement {
@@ -378,10 +340,22 @@ impl SubTrend {
     }
 }
 
+/// 走势
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Trend {
     pub start: ValuePoint,
     pub end: ValuePoint,
     pub centers: usize,
     pub level: i32,
+}
+
+/// 买卖点
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum Choice {
+    BuyOne,
+    BuyTwo,
+    BuyThree,
+    SellOne,
+    SellTwo,
+    SellThree,
 }

@@ -1,7 +1,6 @@
 // use actix_web::error::ResponseError;
 // use actix_web::HttpResponse;
 use derive_more::Display;
-use serde_derive::*;
 use std::fmt;
 
 /// the error type for web server
@@ -84,31 +83,6 @@ impl From<tanglism_morph::Error> for Error {
 impl From<tokio::task::JoinError> for Error {
     fn from(err: tokio::task::JoinError) -> Error {
         Error::custom(ErrorKind::InternalServerError, err.to_string())
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ErrorResponse {
-    errors: Vec<String>,
-}
-
-impl From<&str> for ErrorResponse {
-    fn from(err: &str) -> Self {
-        ErrorResponse {
-            errors: vec![err.into()],
-        }
-    }
-}
-
-impl From<String> for ErrorResponse {
-    fn from(err: String) -> Self {
-        ErrorResponse { errors: vec![err] }
-    }
-}
-
-impl From<Vec<String>> for ErrorResponse {
-    fn from(errors: Vec<String>) -> Self {
-        ErrorResponse { errors }
     }
 }
 

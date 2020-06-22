@@ -7,6 +7,7 @@ table! {
         end_date -> Date,
         tp -> Varchar,
         msci -> Bool,
+        hs300 -> Bool,
     }
 }
 

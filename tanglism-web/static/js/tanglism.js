@@ -1,4 +1,5 @@
 import { setupWebsocketEvents, validate_basic_cfg, draw } from './tanglism-draw.js';
+import { atr } from './atr.js';
 
 $(document).ready(function() {
   // 股票选择
@@ -66,5 +67,39 @@ $(document).ready(function() {
   // websocket
   var ws = new WebSocket("ws://" + location.hostname + ":" + location.port + "/ws/");
   setupWebsocketEvents(ws);
+
+  $("#atr_submit").click(function(){
+    var atrp_days = $("#atr_days_input").val();
+    $.ajax({
+      url: "/api/prioritized-stocks?atrp_days=" + encodeURIComponent(atrp_days),
+      method: "GET",
+      dataType: "json",
+      success: function(resp) {
+        atr.data($.map(resp, function(item){
+          var rst = {
+            code: item.code,
+            display_name: item.display_name,
+            msci: item.msci,
+            hs300: item.hs300,
+            atrp_days: item.atrp_days
+          };
+          if (item.atrp_max) {
+            rst.atrp_max = item.atrp_max;
+          }
+          if (item.atrp_min) {
+            rst.atrp_min = item.atrp_min;
+          }
+          if (item.atrp_avg) {
+            rst.atrp_avg = item.atrp_avg;
+          }
+          return rst;
+        }));
+        atr.draw_table();
+      },
+      error: function(err) {
+        console.log("ajax error on prioritized stocks with ATR metrics", err);
+      }
+  });
+  });
 });
 

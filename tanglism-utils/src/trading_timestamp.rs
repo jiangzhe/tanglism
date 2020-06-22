@@ -92,8 +92,14 @@ pub struct LocalTradingDates {
 
 impl LocalTradingDates {
     // 创建空实例
-    pub fn empty() -> Self {
+    fn empty() -> Self {
         LocalTradingDates { bm: Vec::new() }
+    }
+
+    // 获取单例
+    #[inline]
+    pub fn singleton() -> Arc<Self> {
+        Arc::clone(&LOCAL_DATES)
     }
 
     // 通过字符串添加日期，若字符串无效则直接丢弃
@@ -285,32 +291,6 @@ impl TradingDates for LocalTradingDates {
     }
 }
 
-impl TradingTimestamps for LocalTradingDates {
-    fn tick(&self) -> String {
-        "1d".to_owned()
-    }
-
-    // 名义的分钟数，不使用
-    fn tick_minutes(&self) -> i32 {
-        24 * 60
-    }
-
-    fn prev_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
-        self.prev_day(ts.date()).map(|t| t.and_hms(15, 0, 0))
-    }
-
-    fn next_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
-        self.next_day(ts.date()).map(|t| t.and_hms(15, 0, 0))
-    }
-
-    fn aligned_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
-        if self.contains_day(ts.date()) && permit_trade_time(ts.time()) {
-            return Some(NaiveDateTime::new(ts.date(), *AFTERNOON_END));
-        }
-        None
-    }
-}
-
 /// 中国交易时刻集合
 ///
 /// 早晨9:30 - 11:30
@@ -336,26 +316,21 @@ lazy_static! {
         }
         Arc::new(tdbm)
     };
-    pub static ref LOCAL_TS_1_MIN: LocalTradingTimestamps =
-        LocalTradingTimestamps::new("1m", Arc::clone(&LOCAL_DATES)).unwrap();
-    pub static ref LOCAL_TS_5_MIN: LocalTradingTimestamps =
-        LocalTradingTimestamps::new("5m", Arc::clone(&LOCAL_DATES)).unwrap();
-    pub static ref LOCAL_TS_30_MIN: LocalTradingTimestamps =
-        LocalTradingTimestamps::new("30m", Arc::clone(&LOCAL_DATES)).unwrap();
 }
 
 impl LocalTradingTimestamps {
-    pub fn new(tick: &str, tdbm: Arc<LocalTradingDates>) -> Result<Self> {
+    pub fn new(tick: &str) -> Result<Self> {
         let tick_minutes = match tick {
             "1m" => 1,
             "5m" => 5,
             "30m" => 30,
+            "1d" => 240,
             _ => return Err(Error(format!("tick {} not supported", tick))),
         };
         Ok(LocalTradingTimestamps {
             tick: tick.to_owned(),
             tick_minutes,
-            tdbm,
+            tdbm: Arc::clone(&LOCAL_DATES),
         })
     }
 }
@@ -370,6 +345,9 @@ impl TradingTimestamps for LocalTradingTimestamps {
     }
 
     fn next_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
+        if self.tick == "1d" {
+            return self.tdbm.next_day(ts.date()).map(|d| d.and_hms(15, 0, 0));
+        }
         if ts.minute() % self.tick_minutes() as u32 != 0 {
             return None;
         }
@@ -398,6 +376,9 @@ impl TradingTimestamps for LocalTradingTimestamps {
     }
 
     fn prev_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
+        if self.tick == "1d" {
+            return self.tdbm.prev_day(ts.date()).map(|d| d.and_hms(15, 0, 0));
+        }
         if ts.minute() % self.tick_minutes() as u32 != 0 {
             return None;
         }
@@ -434,6 +415,10 @@ impl TradingTimestamps for LocalTradingTimestamps {
 
     fn aligned_tick(&self, ts: NaiveDateTime) -> Option<NaiveDateTime> {
         if self.contains_day(ts.date()) && permit_trade_time(ts.time()) {
+            // 天级别对齐到收盘时间
+            if self.tick == "1d" {
+                return Some(ts.date().and_hms(15, 0, 0));
+            }
             let rem = ts.minute() as i32 % self.tick_minutes();
             return Some(if rem == 0 {
                 ts
@@ -594,13 +579,13 @@ mod tests {
 
     #[test]
     fn test_trading_ts_tick_and_minutes() -> Result<()> {
-        let ltts1 = LocalTradingTimestamps::new("1m", Arc::new(LocalTradingDates::empty()))?;
+        let ltts1 = LocalTradingTimestamps::new("1m")?;
         assert_eq!("1m".to_owned(), ltts1.tick());
         assert_eq!(1, ltts1.tick_minutes());
-        let ltts2 = LocalTradingTimestamps::new("5m", Arc::new(LocalTradingDates::empty()))?;
+        let ltts2 = LocalTradingTimestamps::new("5m")?;
         assert_eq!("5m".to_owned(), ltts2.tick());
         assert_eq!(5, ltts2.tick_minutes());
-        let ltts3 = LocalTradingTimestamps::new("30m", Arc::new(LocalTradingDates::empty()))?;
+        let ltts3 = LocalTradingTimestamps::new("30m")?;
         assert_eq!("30m".to_owned(), ltts3.tick());
         assert_eq!(30, ltts3.tick_minutes());
         Ok(())
@@ -608,86 +593,87 @@ mod tests {
 
     #[test]
     fn test_trading_ts_prev_and_next_tick() -> Result<()> {
-        let mut tdbm = LocalTradingDates::empty();
-        tdbm.add_day_str("2020-02-01");
-        tdbm.add_day_str("2020-02-02");
-        let ltts = LocalTradingTimestamps::new("30m", Arc::new(tdbm))?;
-        let ts_02010800 = NaiveDateTime::from_str("2020-02-01T08:00:00")?;
-        let ts_02010930 = NaiveDateTime::from_str("2020-02-01T09:30:00")?;
-        let ts_02011000 = NaiveDateTime::from_str("2020-02-01T10:00:00")?;
-        let ts_02011030 = NaiveDateTime::from_str("2020-02-01T10:30:00")?;
-        let ts_02011100 = NaiveDateTime::from_str("2020-02-01T11:00:00")?;
-        let ts_02011130 = NaiveDateTime::from_str("2020-02-01T11:30:00")?;
-        let ts_02011300 = NaiveDateTime::from_str("2020-02-01T13:00:00")?;
-        let ts_02011330 = NaiveDateTime::from_str("2020-02-01T13:30:00")?;
-        let ts_02011400 = NaiveDateTime::from_str("2020-02-01T14:00:00")?;
-        let ts_02011430 = NaiveDateTime::from_str("2020-02-01T14:30:00")?;
-        let ts_02011500 = NaiveDateTime::from_str("2020-02-01T15:00:00")?;
-        let ts_02020930 = NaiveDateTime::from_str("2020-02-02T09:30:00")?;
-        let ts_02021000 = NaiveDateTime::from_str("2020-02-02T10:00:00")?;
+        let ltts = LocalTradingTimestamps::new("30m")?;
+        let ts_02031500 = NaiveDateTime::from_str("2020-02-03T15:00:00")?;
+        let ts_02040800 = NaiveDateTime::from_str("2020-02-04T08:00:00")?;
+        let ts_02040930 = NaiveDateTime::from_str("2020-02-04T09:30:00")?;
+        let ts_02041000 = NaiveDateTime::from_str("2020-02-04T10:00:00")?;
+        let ts_02041030 = NaiveDateTime::from_str("2020-02-04T10:30:00")?;
+        let ts_02041100 = NaiveDateTime::from_str("2020-02-04T11:00:00")?;
+        let ts_02041130 = NaiveDateTime::from_str("2020-02-04T11:30:00")?;
+        let ts_02041300 = NaiveDateTime::from_str("2020-02-04T13:00:00")?;
+        let ts_02041330 = NaiveDateTime::from_str("2020-02-04T13:30:00")?;
+        let ts_02041400 = NaiveDateTime::from_str("2020-02-04T14:00:00")?;
+        let ts_02041430 = NaiveDateTime::from_str("2020-02-04T14:30:00")?;
+        let ts_02041500 = NaiveDateTime::from_str("2020-02-04T15:00:00")?;
+        let ts_02050930 = NaiveDateTime::from_str("2020-02-05T09:30:00")?;
+        let ts_02051000 = NaiveDateTime::from_str("2020-02-05T10:00:00")?;
 
-        assert_eq!(None, ltts.prev_tick(ts_02010800));
-        assert_eq!(None, ltts.next_tick(ts_02010800));
-        assert_eq!(None, ltts.prev_tick(ts_02010930));
-        assert_eq!(Some(ts_02011000), ltts.next_tick(ts_02010930));
-        assert_eq!(None, ltts.prev_tick(ts_02011000));
-        assert_eq!(Some(ts_02011030), ltts.next_tick(ts_02011000));
-        assert_eq!(Some(ts_02011130), ltts.next_tick(ts_02011100));
-        assert_eq!(Some(ts_02011100), ltts.prev_tick(ts_02011130));
-        assert_eq!(Some(ts_02011330), ltts.next_tick(ts_02011130));
-        assert_eq!(Some(ts_02011330), ltts.next_tick(ts_02011300));
-        assert_eq!(Some(ts_02011130), ltts.prev_tick(ts_02011330));
-        assert_eq!(Some(ts_02011400), ltts.next_tick(ts_02011330));
-        assert_eq!(Some(ts_02011430), ltts.prev_tick(ts_02011500));
-        assert_eq!(Some(ts_02021000), ltts.next_tick(ts_02011500));
-        assert_eq!(Some(ts_02011430), ltts.prev_tick(ts_02020930));
-        assert_eq!(Some(ts_02021000), ltts.next_tick(ts_02020930));
-        assert_eq!(Some(ts_02011500), ltts.prev_tick(ts_02021000));
+        assert_eq!(None, ltts.prev_tick(ts_02040800));
+        assert_eq!(None, ltts.next_tick(ts_02040800));
+        assert_eq!(Some(ts_02041000), ltts.next_tick(ts_02040930));
+        assert_eq!(Some(ts_02031500), ltts.prev_tick(ts_02041000));
+        assert_eq!(Some(ts_02041030), ltts.next_tick(ts_02041000));
+        assert_eq!(Some(ts_02041130), ltts.next_tick(ts_02041100));
+        assert_eq!(Some(ts_02041100), ltts.prev_tick(ts_02041130));
+        assert_eq!(Some(ts_02041330), ltts.next_tick(ts_02041130));
+        assert_eq!(Some(ts_02041330), ltts.next_tick(ts_02041300));
+        assert_eq!(Some(ts_02041130), ltts.prev_tick(ts_02041330));
+        assert_eq!(Some(ts_02041400), ltts.next_tick(ts_02041330));
+        assert_eq!(Some(ts_02041430), ltts.prev_tick(ts_02041500));
+        assert_eq!(Some(ts_02051000), ltts.next_tick(ts_02041500));
+        assert_eq!(Some(ts_02041430), ltts.prev_tick(ts_02050930));
+        assert_eq!(Some(ts_02051000), ltts.next_tick(ts_02050930));
+        assert_eq!(Some(ts_02041500), ltts.prev_tick(ts_02051000));
 
         Ok(())
     }
 
     #[test]
     fn test_trading_dates_align() -> Result<()> {
+        let dates = LocalTradingTimestamps::new("1d")?;
         let ts1 = NaiveDateTime::from_str("2020-02-17T09:00:00")?;
-        assert_eq!(None, LOCAL_DATES.aligned_tick(ts1));
+        assert_eq!(None, dates.aligned_tick(ts1));
         let ts2 = NaiveDateTime::from_str("2020-02-17T09:40:00")?;
         assert_eq!(
             Some(NaiveDateTime::from_str("2020-02-17T15:00:00")?),
-            LOCAL_DATES.aligned_tick(ts2)
+            dates.aligned_tick(ts2)
         );
         let ts3 = NaiveDateTime::from_str("2020-02-17T19:00:00")?;
-        assert_eq!(None, LOCAL_DATES.aligned_tick(ts3));
+        assert_eq!(None, dates.aligned_tick(ts3));
         Ok(())
     }
 
     #[test]
     fn test_trading_ts_align() -> Result<()> {
+        let ts1m = LocalTradingTimestamps::new("1m")?;
+        let ts5m = LocalTradingTimestamps::new("5m")?;
+        let ts30m = LocalTradingTimestamps::new("30m")?;
         let ts1 = NaiveDateTime::from_str("2020-02-17T09:00:00")?;
-        assert_eq!(None, LOCAL_TS_1_MIN.aligned_tick(ts1));
-        assert_eq!(None, LOCAL_TS_5_MIN.aligned_tick(ts1));
-        assert_eq!(None, LOCAL_TS_30_MIN.aligned_tick(ts1));
+        assert_eq!(None, ts1m.aligned_tick(ts1));
+        assert_eq!(None, ts5m.aligned_tick(ts1));
+        assert_eq!(None, ts30m.aligned_tick(ts1));
         let ts2 = NaiveDateTime::from_str("2020-02-17T19:00:00")?;
-        assert_eq!(None, LOCAL_TS_1_MIN.aligned_tick(ts2));
-        assert_eq!(None, LOCAL_TS_5_MIN.aligned_tick(ts2));
-        assert_eq!(None, LOCAL_TS_30_MIN.aligned_tick(ts2));
+        assert_eq!(None, ts1m.aligned_tick(ts2));
+        assert_eq!(None, ts5m.aligned_tick(ts2));
+        assert_eq!(None, ts30m.aligned_tick(ts2));
         let ts3 = NaiveDateTime::from_str("2020-02-17T09:41:00")?;
         assert_eq!(
             Some(NaiveDateTime::from_str("2020-02-17T09:41:00")?),
-            LOCAL_TS_1_MIN.aligned_tick(ts3)
+            ts1m.aligned_tick(ts3)
         );
         assert_eq!(
             Some(NaiveDateTime::from_str("2020-02-17T09:45:00")?),
-            LOCAL_TS_5_MIN.aligned_tick(ts3)
+            ts5m.aligned_tick(ts3)
         );
         assert_eq!(
             Some(NaiveDateTime::from_str("2020-02-17T10:00:00")?),
-            LOCAL_TS_30_MIN.aligned_tick(ts3)
+            ts30m.aligned_tick(ts3)
         );
         let ts4 = NaiveDateTime::from_str("2020-02-17T10:00:00")?;
-        assert_eq!(Some(ts4), LOCAL_TS_1_MIN.aligned_tick(ts4));
-        assert_eq!(Some(ts4), LOCAL_TS_5_MIN.aligned_tick(ts4));
-        assert_eq!(Some(ts4), LOCAL_TS_30_MIN.aligned_tick(ts4));
+        assert_eq!(Some(ts4), ts1m.aligned_tick(ts4));
+        assert_eq!(Some(ts4), ts5m.aligned_tick(ts4));
+        assert_eq!(Some(ts4), ts30m.aligned_tick(ts4));
         Ok(())
     }
 }

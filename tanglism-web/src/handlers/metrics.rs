@@ -1,7 +1,9 @@
+pub mod atr;
 mod ema;
 mod ma;
 
 use super::stock_prices::get_stock_tick_prices;
+use crate::models::StockTickPrice;
 use crate::BasicCfg;
 use crate::{DbPool, Error, ErrorKind, Result};
 use bigdecimal::BigDecimal;
@@ -9,6 +11,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use ema::approximate_macd;
 use jqdata::JqdataClient;
 use serde_derive::*;
+use std::collections::HashMap;
 use tanglism_utils::{TradingDates, LOCAL_DATES};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,10 +36,22 @@ pub struct Param {
     pub metrics_cfg: Option<String>,
 }
 
+/// 指标
+///
+/// 单个时间点的单个指标
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metric {
     pub ts: NaiveDateTime,
     pub value: BigDecimal,
+}
+
+/// 指标
+///
+/// 单个时间点的多个指标
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiMetric {
+    pub ts: NaiveDateTime,
+    pub values: Vec<BigDecimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,4 +213,70 @@ fn ema_approximate_start(start_dt: NaiveDate, tick: &str, period: u32) -> Result
         }
     }
     Ok(dt)
+}
+
+/// 简化多股票ATRP统计
+///
+/// 输入必定是按照code和ts升序排列的
+pub fn multi_atrp_stats(input: &[StockTickPrice]) -> HashMap<String, atr::AtrpStats> {
+    let mock_tail = vec![mock_price_placeholder()];
+    let atrp_agg = input
+        .iter()
+        .skip(1)
+        .chain(mock_tail.iter())
+        .zip(input.iter())
+        .fold(AtrpContainer::empty(), |mut acc, (curr, prev)| {
+            if curr.code == prev.code {
+                acc.add_item(atr::AtrInput {
+                    ts: curr.ts,
+                    curr_high: curr.high.clone(),
+                    curr_low: curr.low.clone(),
+                    prev_close: prev.close.clone(),
+                });
+            } else {
+                acc.flush(prev.code.to_owned());
+            }
+            acc
+        });
+    atrp_agg.rst
+}
+
+fn mock_price_placeholder() -> StockTickPrice {
+    StockTickPrice {
+        tick: "1d".to_owned(),
+        code: "NONEXISTS".to_owned(),
+        ts: NaiveDate::from_ymd(1970, 1, 1).and_hms(0, 0, 0),
+        open: BigDecimal::from(0),
+        close: BigDecimal::from(0),
+        high: BigDecimal::from(0),
+        low: BigDecimal::from(0),
+        volume: BigDecimal::from(0),
+        amount: BigDecimal::from(0),
+    }
+}
+
+struct AtrpContainer {
+    rst: HashMap<String, atr::AtrpStats>,
+    tmp: Vec<atr::AtrInput>,
+}
+
+impl AtrpContainer {
+    fn empty() -> Self {
+        AtrpContainer {
+            rst: HashMap::new(),
+            tmp: Vec::new(),
+        }
+    }
+
+    fn add_item(&mut self, item: atr::AtrInput) {
+        self.tmp.push(item);
+    }
+
+    fn flush(&mut self, code: String) {
+        if self.tmp.is_empty() {
+            return;
+        }
+        let stats = atr::atrp_stats(self.tmp.drain(..));
+        self.rst.insert(code, stats);
+    }
 }

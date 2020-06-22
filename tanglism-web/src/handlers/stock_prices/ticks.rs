@@ -1,5 +1,6 @@
+use crate::models::StockTickPrice;
 use crate::schema::stock_tick_prices;
-use crate::{DbPool, Result};
+use crate::{DbPool, Error, ErrorKind, Result};
 use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, NaiveDateTime};
 use diesel::prelude::*;
@@ -37,27 +38,64 @@ const STOCK_PRICE_COLUMNS: StockPriceColumns = (
     stock_tick_prices::amount,
 );
 
-pub fn query_db_prices(
-    pool: &DbPool,
-    input_tick: &str,
-    input_code: &str,
+pub async fn query_db_prices(
+    pool: DbPool,
+    input_tick: String,
+    input_code: String,
     input_start_dt: NaiveDate,
     input_end_dt: NaiveDate,
 ) -> Result<Vec<StockPrice>> {
-    use crate::schema::stock_tick_prices::dsl::*;
-    let conn = pool.get()?;
-    let input_start_ts = input_start_dt.and_hms(0, 0, 0);
-    let input_end_ts = input_end_dt.and_hms(23, 59, 59);
-    let data = stock_tick_prices
-        .filter(
-            tick.eq(input_tick)
-                .and(code.eq(input_code))
-                .and(ts.ge(input_start_ts))
-                .and(ts.le(input_end_ts)),
-        )
-        .order(ts.asc())
-        .select(STOCK_PRICE_COLUMNS)
-        .load::<StockPrice>(&conn)?;
+    let data = tokio::task::spawn_blocking(move || {
+        use crate::schema::stock_tick_prices::dsl::*;
+        let conn = pool.get().map_err(Error::from)?;
+        let input_start_ts = input_start_dt.and_hms(0, 0, 0);
+        let input_end_ts = input_end_dt.and_hms(23, 59, 59);
+        stock_tick_prices
+            .filter(
+                tick.eq(input_tick)
+                    .and(code.eq(input_code))
+                    .and(ts.ge(input_start_ts))
+                    .and(ts.le(input_end_ts)),
+            )
+            .order(ts.asc())
+            .select(STOCK_PRICE_COLUMNS)
+            .load::<StockPrice>(&conn)
+            .map_err(Error::from)
+    })
+    .await??;
+    Ok(data)
+}
+
+pub async fn query_db_multiple_prices(
+    pool: DbPool,
+    input_tick: String,
+    input_codes: Vec<String>,
+    input_start_dt: NaiveDate,
+    input_end_dt: NaiveDate,
+) -> Result<Vec<StockTickPrice>> {
+    if input_codes.is_empty() {
+        return Err(Error::custom(
+            ErrorKind::InternalServerError,
+            "input codes are empty".to_owned(),
+        ));
+    }
+    let data = tokio::task::spawn_blocking(move || {
+        use crate::schema::stock_tick_prices::dsl::*;
+        let conn = pool.get().map_err(Error::from)?;
+        let input_start_ts = input_start_dt.and_hms(0, 0, 0);
+        let input_end_ts = input_end_dt.and_hms(23, 59, 59);
+        stock_tick_prices
+            .filter(
+                tick.eq(input_tick)
+                    .and(code.eq_any(input_codes))
+                    .and(ts.ge(input_start_ts))
+                    .and(ts.le(input_end_ts)),
+            )
+            .order((code.asc(), ts.asc()))
+            .load::<StockTickPrice>(&conn)
+            .map_err(Error::from)
+    })
+    .await??;
     Ok(data)
 }
 

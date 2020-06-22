@@ -12,9 +12,8 @@
 //! 目前的实现是直接使用次级别段作为次级别走势，而次级别笔作为次级别以下走势。
 
 use crate::align_tick;
-use crate::shape::{Center, CenterElement, SemiCenter, SubTrend, SubTrendType, Trend, ValuePoint};
-use crate::{Error, Result};
-use chrono::NaiveDateTime;
+use crate::shape::{Center, CenterElement, SubTrend, SubTrendType, Trend, ValuePoint};
+use crate::Result;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrendConfig {
@@ -52,13 +51,12 @@ impl Standard {
         let ce = &centers[idx];
         if self.tmp.is_empty() {
             let (centers, last_center) = if let Some(c) = ce.center() {
-                (1, Some(c.clone()))
+                (1, Some(Box::new(c.clone())))
             } else {
                 (0, None)
             };
             let start = ce.start().clone();
             self.push_pending(TemporaryPending {
-                start_idx: 0,
                 end_idx: 0,
                 centers,
                 last_center,
@@ -79,7 +77,7 @@ impl Standard {
                             self.update_pending(move |p| {
                                 p.end_idx = idx;
                                 p.centers += 1;
-                                p.last_center.replace(c);
+                                p.last_center.replace(Box::new(c));
                             });
                         } else if let Some(upward) = p.upward {
                             // 走势存在中枢，且方向固定
@@ -88,15 +86,15 @@ impl Standard {
                                 .as_ref()
                                 .cloned()
                                 .expect("last center in pending trend");
-                            if (upward && &c.shared_low.value > &last_center.shared_high.value)
-                                || (!upward && &c.shared_high.value < &last_center.shared_low.value)
+                            if (upward && c.shared_low.value > last_center.shared_high.value)
+                                || (!upward && c.shared_high.value < last_center.shared_low.value)
                             {
                                 // 向上同向或向下同向
                                 let new_center = c.clone();
                                 self.update_pending(move |p| {
                                     p.end_idx = idx;
                                     p.centers += 1;
-                                    p.last_center.replace(new_center);
+                                    p.last_center.replace(Box::new(new_center));
                                 });
                             } else if upward {
                                 // 向上走势终结
@@ -116,11 +114,10 @@ impl Standard {
                                 });
                                 // 开始新走势
                                 self.push_pending(TemporaryPending {
-                                    start_idx: idx,
                                     end_idx: idx,
                                     start: new_start,
                                     centers: 1,
-                                    last_center: Some(c.clone()),
+                                    last_center: Some(Box::new(c.clone())),
                                     upward: Some(false),
                                     level: c.level,
                                 });
@@ -141,11 +138,10 @@ impl Standard {
                                 });
                                 // 开始新走势
                                 self.push_pending(TemporaryPending {
-                                    start_idx: idx,
                                     end_idx: idx,
                                     start: new_start,
                                     centers: 1,
-                                    last_center: Some(c.clone()),
+                                    last_center: Some(Box::new(c.clone())),
                                     upward: Some(true),
                                     level: c.level,
                                 });
@@ -157,22 +153,22 @@ impl Standard {
                                 .as_ref()
                                 .cloned()
                                 .expect("last center in pending trend");
-                            if &c.shared_low.value > &last_center.shared_high.value {
+                            if c.shared_low.value > last_center.shared_high.value {
                                 // 向上走势
                                 let new_center = c.clone();
                                 self.update_pending(move |p| {
                                     p.end_idx = idx;
                                     p.centers += 1;
-                                    p.last_center.replace(new_center);
+                                    p.last_center.replace(Box::new(new_center));
                                     p.upward.replace(true);
                                 });
-                            } else if &c.shared_high.value < &last_center.shared_low.value {
+                            } else if c.shared_high.value < last_center.shared_low.value {
                                 // 向下走势
                                 let new_center = c.clone();
                                 self.update_pending(move |p| {
                                     p.end_idx = idx;
                                     p.centers += 1;
-                                    p.last_center.replace(new_center);
+                                    p.last_center.replace(Box::new(new_center));
                                     p.upward.replace(false);
                                 });
                             } else {
@@ -185,11 +181,10 @@ impl Standard {
                                     level: std::cmp::max(p.level, c.level),
                                 });
                                 self.push_pending(TemporaryPending {
-                                    start_idx: idx,
                                     end_idx: idx,
                                     start: c.start.clone(),
                                     centers: 1,
-                                    last_center: Some(c.clone()),
+                                    last_center: Some(Box::new(c.clone())),
                                     upward: None,
                                     level: c.level,
                                 });
@@ -211,6 +206,7 @@ impl Standard {
         self.tmp.last()
     }
 
+    #[allow(dead_code)]
     fn remove_lastn(&mut self, n: usize) {
         for _ in 0..n {
             self.tmp.pop().unwrap();
@@ -261,11 +257,10 @@ enum TemporaryTrend {
 }
 
 struct TemporaryPending {
-    start_idx: usize,
     end_idx: usize,
     centers: usize,
     // 最后一个中枢
-    last_center: Option<Center>,
+    last_center: Option<Box<Center>>,
     // 起始点，可能与start_idx不一致，是因为前一走势的极值点作为后一走势起点
     start: ValuePoint,
     // 方向固定向上或向下，None表示方向未固定
