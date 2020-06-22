@@ -140,17 +140,8 @@ fn accumulate_strokes(
 
 #[inline]
 pub(crate) fn align_tick(tick: &str, ts: NaiveDateTime) -> Result<NaiveDateTime> {
-    use tanglism_utils::{
-        TradingTimestamps, LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN,
-    };
-    let aligned = match tick {
-        "1d" => LOCAL_DATES.aligned_tick(ts),
-        "30m" => LOCAL_TS_30_MIN.aligned_tick(ts),
-        "5m" => LOCAL_TS_5_MIN.aligned_tick(ts),
-        "1m" => LOCAL_TS_1_MIN.aligned_tick(ts),
-        _ => {
-            return Err(Error(format!("invalid tick: {}", tick)));
-        }
-    };
-    aligned.ok_or_else(|| Error(format!("invalid timestamp: {}", ts)))
+    use tanglism_utils::{LocalTradingTimestamps, TradingTimestamps};
+    LocalTradingTimestamps::new(tick)?
+        .aligned_tick(ts)
+        .ok_or_else(|| Error(format!("invalid timestamp: {}", ts)))
 }

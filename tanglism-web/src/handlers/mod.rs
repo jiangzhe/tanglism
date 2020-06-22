@@ -1,3 +1,4 @@
+pub mod choice;
 pub mod metrics;
 pub mod stock_prices;
 pub mod stocks;

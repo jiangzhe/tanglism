@@ -1,9 +1,12 @@
+use crate::parting::PartingDelta;
 use crate::shape::{Parting, Stroke};
+use crate::stream::{Accumulator, Aggregator, Delta};
 use crate::Result;
 use bigdecimal::BigDecimal;
 use lazy_static::*;
+use serde_derive::*;
 use std::str::FromStr;
-use tanglism_utils::TradingTimestamps;
+use tanglism_utils::{LocalTradingTimestamps, TradingTimestamps};
 
 /// 将分型序列解析为笔序列
 ///
@@ -12,26 +15,21 @@ use tanglism_utils::TradingTimestamps;
 /// 2. 选择下一个点。
 ///    若异型：邻接或交叉则忽略，不邻接则成笔
 ///    若同型：顶更高/底更低则修改当前笔，反之则忽略
-pub fn pts_to_sks<T>(pts: &[Parting], tts: &T) -> Result<Vec<Stroke>>
-where
-    T: TradingTimestamps,
-{
-    StrokeShaper::new(pts, tts, StrokeConfig::default()).run()
+pub fn pts_to_sks(pts: &[Parting], tick: &str, cfg: StrokeConfig) -> Result<Vec<Stroke>> {
+    StrokeAccumulator::new(tick, cfg)?.aggregate(pts)
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrokeConfig {
     pub indep_k: bool,
     pub judge: StrokeJudge,
-    pub backtrack: StrokeBacktrack,
 }
 
 impl Default for StrokeConfig {
     fn default() -> Self {
         StrokeConfig {
-            indep_k: true,
-            judge: StrokeJudge::None,
-            backtrack: StrokeBacktrack::None,
+            indep_k: false,
+            judge: StrokeJudge::GapOpening(false),
         }
     }
 }
@@ -45,104 +43,119 @@ pub enum StrokeJudge {
     GapRatio(BigDecimal),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum StrokeBacktrack {
-    None,
-    Diff(BigDecimal),
-}
-
 lazy_static! {
     static ref GAP_MINIMAL_BASE: BigDecimal = BigDecimal::from_str("0.01").unwrap();
     static ref GAP_ZERO: BigDecimal = BigDecimal::from(0);
 }
 
-/// 可使用更精细的生成配置进行笔分析
-pub struct StrokeShaper<'p, 't, T> {
-    pts: &'p [Parting],
-    tts: &'t T,
-    sks: Vec<Stroke>,
-    // 表示未成笔的起点序列
+pub type StrokeDelta = Delta<Stroke>;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CStroke {
+    pub sk: Stroke,
+    pub orig: Option<Box<CStroke>>,
+}
+
+pub struct StrokeAccumulator<T> {
+    tts: T,
+    state: Vec<CStroke>,
     pending: Vec<Parting>,
     cfg: StrokeConfig,
 }
 
-impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
-    pub fn new(pts: &'p [Parting], tts: &'t T, cfg: StrokeConfig) -> Self {
-        StrokeShaper {
-            pts,
+impl StrokeAccumulator<LocalTradingTimestamps> {
+    // only 1m, 5m, 30m, 1d are allowed
+    pub fn new(tick: &str, cfg: StrokeConfig) -> Result<Self> {
+        let tts = LocalTradingTimestamps::new(tick)?;
+        Ok(StrokeAccumulator {
             tts,
-            sks: Vec::new(),
+            state: Vec::new(),
             pending: Vec::new(),
             cfg,
-        }
+        })
     }
 
-    pub fn run(mut self) -> Result<Vec<Stroke>> {
-        if self.pts.is_empty() {
-            return Ok(Vec::new());
+    pub fn delta_agg(self) -> StrokeAggregator<LocalTradingTimestamps> {
+        StrokeAggregator {
+            acc: self,
+            ds: Vec::new(),
         }
-        let mut pts_iter = self.pts.iter();
-        let first = pts_iter.next().cloned().unwrap();
-        self.pending = vec![first];
-        for pt in pts_iter {
-            self.consume(pt.clone());
-        }
-        Ok(self.sks)
+    }
+}
+
+impl<T: TradingTimestamps> StrokeAccumulator<T> {
+    pub fn new_with_tts(tts: T, cfg: StrokeConfig) -> Result<StrokeAccumulator<T>> {
+        Ok(StrokeAccumulator {
+            tts,
+            state: Vec::new(),
+            pending: Vec::new(),
+            cfg,
+        })
     }
 
-    // 依序消费每个分型
-    // 可以根据当前起点的分型，分为同类型，和不同类型
-    // 1. 顶底、底顶：可连成一笔
-    // 2. 顶顶、底底：无法连成一笔，单需要考虑如果底比前底低，
-    //    或者顶比前顶高，则需要修改前一笔的终点为该分型
-    fn consume(&mut self, pt: Parting) {
+    fn accumulate_add(&mut self, item: &Parting) -> Result<StrokeDelta> {
         // 存在前一笔时，比较当前的分型是否与前一笔的终点分型类型一致
         // 如果一致，则比较高低，并根据情况修改笔或丢弃
-        if let Some(sk) = self.sks.last() {
+        if let Some(csk) = self.state.last() {
             // 比较方向
-            if sk.end_pt.top == pt.top {
+            if csk.sk.end_pt.top == item.top {
                 // 顶比前顶高，或者底比前底低，直接修改该笔
-                if (pt.top && pt.extremum_price > sk.end_pt.extremum_price)
-                    || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price)
+                if (item.top && item.extremum_price > csk.sk.end_pt.extremum_price)
+                    || (!item.top && item.extremum_price < csk.sk.end_pt.extremum_price)
                 {
-                    self.sks.last_mut().unwrap().end_pt = pt;
+                    let csk = self.state.pop().unwrap();
+                    let new_sk = CStroke {
+                        sk: Stroke {
+                            start_pt: csk.sk.start_pt.clone(),
+                            end_pt: item.clone(),
+                        },
+                        orig: Some(Box::new(csk)),
+                    };
+                    self.state.push(new_sk);
+                    return Ok(StrokeDelta::Update(
+                        self.state.last().map(cstroke_to_stroke).unwrap(),
+                    ));
                 }
-            } else {
-                // 异向顶底间满足顶比底高，且有独立K线
-                if (pt.top && pt.extremum_price > sk.end_pt.extremum_price)
-                    || (!pt.top && pt.extremum_price < sk.end_pt.extremum_price)
-                {
-                    if self.stroke_completed(&sk.end_pt, &pt) {
-                        // 成笔
-                        let new_sk = Stroke {
-                            start_pt: sk.end_pt.clone(),
-                            end_pt: pt,
-                        };
-                        self.sks.push(new_sk);
-                    } else if self.backtrack_last_stroke(&pt, sk) {
-                        self.sks.pop().unwrap();
-                        self.sks.last_mut().unwrap().end_pt = pt;
-                    }
+                // 顶比前顶低，或底比前底高，则忽略
+                return Ok(StrokeDelta::None);
+            }
+            // 异向顶底间满足顶比底高，且符合成笔条件（如存在独立K线）
+            if (item.top && item.extremum_price > csk.sk.end_pt.extremum_price)
+                || (!item.top && item.extremum_price < csk.sk.end_pt.extremum_price)
+            {
+                if self.stroke_completed(&csk.sk.end_pt, &item) {
+                    // 成笔
+                    let new_sk = Stroke {
+                        start_pt: csk.sk.end_pt.clone(),
+                        end_pt: item.clone(),
+                    };
+                    self.state.push(stroke_to_cstroke(&new_sk));
+                    return Ok(StrokeDelta::Add(new_sk));
                 }
+                // 在不成笔时，不考虑回溯，因为回溯将影响之前已经完成的两笔
+                return Ok(StrokeDelta::None);
             }
             // 不满足任一成笔条件则丢弃
-            return;
+            return Ok(StrokeDelta::None);
         }
 
         // 不存在前一笔，则需要和未成笔的潜在起点序列进行比较
         let mut matches = Vec::new();
         for p in &self.pending {
             // 方向不同且顶比底高
-            if pt.top != p.top
-                && ((pt.top && pt.extremum_price > p.extremum_price)
-                    || (!pt.top && pt.extremum_price < p.extremum_price))
+            if item.top != p.top
+                && ((item.top && item.extremum_price > p.extremum_price)
+                    || (!item.top && item.extremum_price < p.extremum_price))
             {
-                // 比较独立K线
-                if self.stroke_completed(&p, &pt) {
+                // 成笔逻辑
+                if self.stroke_completed(&p, &item) {
                     // 成笔
-                    let new_sk = Stroke {
-                        start_pt: p.clone(),
-                        end_pt: pt.clone(),
+                    let new_sk = CStroke {
+                        sk: Stroke {
+                            start_pt: p.clone(),
+                            end_pt: item.clone(),
+                        },
+                        orig: None,
                     };
                     matches.push(new_sk);
                 }
@@ -150,22 +163,99 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         }
         // 与未成笔序列无法成笔时，加入未成笔序列
         if matches.is_empty() {
-            self.pending.push(pt);
-            return;
+            self.pending.push(item.clone());
+            return Ok(StrokeDelta::None);
         }
         // 在是否成笔的判断中，我们取差距更大的分型作为起点，
         // 即如果有多个底可以和顶分型构成一笔，这里取较低的底。
         // 反之亦然。
         let mut r = matches.pop().unwrap();
         while let Some(m) = matches.pop() {
-            if (&r.start_pt.extremum_price - &r.end_pt.extremum_price).abs()
-                < (&m.start_pt.extremum_price - &m.end_pt.extremum_price).abs()
+            if (&r.sk.start_pt.extremum_price - &r.sk.end_pt.extremum_price).abs()
+                < (&m.sk.start_pt.extremum_price - &m.sk.end_pt.extremum_price).abs()
             {
                 r = m;
             }
         }
-        self.sks.push(r);
-        self.pending.clear();
+        self.state.push(r);
+        // 不删除pending队列，仅第一笔使用
+        // 收到分型更新时需要回溯该队列
+        Ok(StrokeDelta::Add(
+            self.state.last().map(cstroke_to_stroke).unwrap(),
+        ))
+    }
+
+    fn accumulate_update(&mut self, item: &Parting) -> Result<StrokeDelta> {
+        if let Some(csk) = self.state.last() {
+            // 存在上一笔时，检查上一笔的结束分型是否匹配
+            // 使用start_ts比较，start_ts不变
+            if csk.sk.end_pt.start_ts == item.start_ts {
+                // 匹配则删除上一笔
+                let mut deleted = self.state.pop().unwrap();
+                if self.state.is_empty() {
+                    if let Some(last_pending) = self.pending.last() {
+                        if last_pending.start_ts == item.start_ts {
+                            self.pending.pop();
+                        }
+                    }
+                }
+                match self.accumulate_add(item)? {
+                    StrokeDelta::None => {
+                        if let Some(orig) = deleted.orig.take() {
+                            let delta = StrokeDelta::Update(cstroke_to_stroke(&orig));
+                            self.state.push(*orig);
+                            return Ok(delta);
+                        } else {
+                            return Ok(StrokeDelta::Delete(cstroke_to_stroke(&deleted)));
+                        }
+                    }
+                    StrokeDelta::Add(new) => {
+                        // 将前一笔更新进新笔的orig变量
+                        self.state.last_mut().unwrap().orig = Some(Box::new(deleted));
+                        return Ok(StrokeDelta::Update(new));
+                    }
+                    _ => unreachable!(),
+                };
+            }
+            // 不匹配，按照add处理
+            return self.accumulate_add(item);
+        }
+        // 不存在上一笔时，检查pending队列
+        if let Some(last_pending) = self.pending.last() {
+            if last_pending.start_ts == item.start_ts {
+                self.pending.pop();
+            }
+        }
+        self.accumulate_add(item)
+    }
+
+    fn accumulate_delete(&mut self, item: &Parting) -> Result<StrokeDelta> {
+        if let Some(csk) = self.state.last_mut() {
+            // 存在上一笔
+            if csk.sk.end_pt.start_ts == item.start_ts {
+                // 匹配笔的结束分型
+                if let Some(orig) = csk.orig.take() {
+                    // 该笔是有前一笔修改得来
+                    let delta = StrokeDelta::Update(cstroke_to_stroke(&orig));
+                    self.state.pop();
+                    self.state.push(*orig);
+                    return Ok(delta);
+                }
+                // 该笔不再完整，删除
+                let deleted = self.state.pop().unwrap();
+                return Ok(StrokeDelta::Delete(cstroke_to_stroke(&deleted)));
+            }
+        }
+        // 不存在上一笔
+        if let Some(last_pt) = self.pending.last() {
+            // pending队列非空
+            if last_pt.start_ts == item.start_ts {
+                // 匹配pending队列最后以分型
+                self.pending.pop();
+                return Ok(StrokeDelta::None);
+            }
+        }
+        unreachable!()
     }
 
     // 成笔逻辑检查
@@ -232,23 +322,90 @@ impl<'p, 't, T: TradingTimestamps> StrokeShaper<'p, 't, T> {
         }
         false
     }
+}
 
-    fn backtrack_last_stroke(&self, pt: &Parting, sk: &Stroke) -> bool {
-        if self.sks.len() >= 2 {
-            if let StrokeBacktrack::Diff(ref d) = self.cfg.backtrack {
-                if sk.start_pt.extremum_price == *GAP_ZERO {
-                    return false;
-                }
-                if pt.top {
-                    return &pt.extremum_price - &sk.start_pt.extremum_price
-                        > &pt.extremum_price * d;
-                } else {
-                    return &sk.start_pt.extremum_price - &pt.extremum_price
-                        > &pt.extremum_price * d;
-                }
+/// 接收分型变更的累加器
+impl<T: TradingTimestamps> Accumulator<PartingDelta> for StrokeAccumulator<T> {
+    type Delta = StrokeDelta;
+    type State = Vec<CStroke>;
+
+    // 依序消费每个分型
+    // 可以根据当前起点的分型，分为同类型，和不同类型
+    // 1. 顶底、底顶：可连成一笔
+    // 2. 顶顶、底底：无法连成一笔，但需要考虑如果底比前底低，
+    //    或者顶比前顶高，则需要修改前一笔的终点为该分型
+    fn accumulate(&mut self, item: &PartingDelta) -> Result<StrokeDelta> {
+        match item {
+            PartingDelta::None => Ok(StrokeDelta::None),
+            PartingDelta::Add(add) => self.accumulate_add(add),
+            PartingDelta::Update(update) => self.accumulate_update(update),
+            PartingDelta::Delete(delete) => self.accumulate_delete(delete),
+        }
+    }
+
+    fn state(&self) -> &Self::State {
+        &self.state
+    }
+}
+
+/// 接收分型(只处理新增)的累加器
+impl<T: TradingTimestamps> Accumulator<Parting> for StrokeAccumulator<T> {
+    type Delta = StrokeDelta;
+    type State = Vec<CStroke>;
+
+    fn accumulate(&mut self, item: &Parting) -> Result<Self::Delta> {
+        self.accumulate_add(item)
+    }
+
+    fn state(&self) -> &Self::State {
+        &self.state
+    }
+}
+
+/// 接收分型数组的聚合器
+impl<T: TradingTimestamps> Aggregator<&[Parting], Vec<Stroke>> for StrokeAccumulator<T> {
+    fn aggregate(mut self, input: &[Parting]) -> Result<Vec<Stroke>> {
+        for item in input {
+            self.accumulate_add(item)?;
+        }
+        Ok(self.state.iter().map(cstroke_to_stroke).collect())
+    }
+}
+
+pub struct StrokeAggregator<T> {
+    acc: StrokeAccumulator<T>,
+    ds: Vec<StrokeDelta>,
+}
+
+impl StrokeAggregator<LocalTradingTimestamps> {
+    pub fn new(tick: &str, cfg: StrokeConfig) -> Result<Self> {
+        Ok(StrokeAggregator {
+            acc: StrokeAccumulator::new(tick, cfg)?,
+            ds: Vec::new(),
+        })
+    }
+}
+
+impl<T: TradingTimestamps> Aggregator<&[PartingDelta], Vec<StrokeDelta>> for StrokeAggregator<T> {
+    fn aggregate(mut self, input: &[PartingDelta]) -> Result<Vec<StrokeDelta>> {
+        for item in input {
+            match self.acc.accumulate(item)? {
+                StrokeDelta::None => (),
+                delta => self.ds.push(delta),
             }
         }
-        false
+        Ok(self.ds)
+    }
+}
+
+pub fn cstroke_to_stroke(csk: &CStroke) -> Stroke {
+    csk.sk.clone()
+}
+
+pub fn stroke_to_cstroke(sk: &Stroke) -> CStroke {
+    CStroke {
+        sk: sk.clone(),
+        orig: None,
     }
 }
 
@@ -258,34 +415,80 @@ mod tests {
     use crate::shape::*;
     use bigdecimal::BigDecimal;
     use chrono::NaiveDateTime;
-    use tanglism_utils::{TradingTimestamps, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN};
+    use tanglism_utils::TradingTimestamps;
 
     #[test]
-    fn test_shaper_no_stroke() -> Result<()> {
+    fn test_stroke_none() -> Result<()> {
         let sks = pts_to_sks_1_min(vec![
             new_pt1("2020-01-07 10:00", 10.00, false),
             new_pt1("2020-01-07 10:01", 10.10, true),
             new_pt1("2020-01-07 10:03", 9.50, false),
-            new_pt1("2020-01-07 10:06", 9.80, true),
         ]);
         assert!(sks.is_empty());
         Ok(())
     }
 
     #[test]
-    fn test_shaper_one_stroke_simple() -> Result<()> {
+    fn test_stroke_one_simple() -> Result<()> {
         let sks = pts_to_sks_1_min(vec![
             new_pt1("2020-01-07 10:00", 10.00, false),
             new_pt1("2020-01-07 10:10", 10.40, true),
-            new_pt1("2020-01-07 10:13", 10.30, false),
+            new_pt1("2020-01-07 10:12", 10.30, false),
         ]);
         assert_eq!(1, sks.len());
         Ok(())
     }
 
+    #[test]
+    fn test_stroke_one_delta_update() -> Result<()> {
+        let sds = pds_to_sds_1_min(vec![
+            PartingDelta::Add(new_pt1("2020-01-07 10:00", 10.00, false)),
+            PartingDelta::Add(new_pt1("2020-01-07 10:10", 11.00, true)),
+            PartingDelta::Update(new_pt1("2020-01-07 10:10", 10.50, true)),
+        ]);
+        assert_eq!(2, sds.len());
+        assert_eq!(
+            BigDecimal::from(11.0),
+            sds[0].add().unwrap().end_pt.extremum_price
+        );
+        assert_eq!(
+            BigDecimal::from(10.5),
+            sds[1].update().unwrap().end_pt.extremum_price
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_stroke_one_delta_delete() -> Result<()> {
+        let sds = pds_to_sds_1_min(vec![
+            PartingDelta::Add(new_pt1("2020-01-07 10:00", 10.00, false)),
+            PartingDelta::Add(new_pt1("2020-01-07 10:10", 11.00, true)),
+            PartingDelta::Delete(new_pt1("2020-01-07 10:10", 11.00, true)),
+        ]);
+        assert_eq!(2, sds.len());
+        sds[0].add().unwrap();
+        sds[1].delete().unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn test_stroke_one_delta_backtrack() -> Result<()> {
+        let sds = pds_to_sds_1_min(vec![
+            PartingDelta::Add(new_pt1("2020-01-07 10:00", 10.00, false)),
+            PartingDelta::Add(new_pt1("2020-01-07 10:10", 11.00, true)),
+            PartingDelta::Add(new_pt1("2020-01-07 10:20", 12.00, true)),
+            PartingDelta::Delete(new_pt1("2020-01-07 10:20", 12.00, true)),
+        ]);
+        assert!(sds[0].add().is_some());
+        assert!(sds[1].update().is_some());
+        let update = sds[2].update().unwrap();
+        assert_eq!(BigDecimal::from(11.0), update.end_pt.extremum_price);
+        Ok(())
+    }
+
     // 一笔，起点移动，因为起点不是最低的底分型
     #[test]
-    fn test_shaper_one_stroke_moving_start() -> Result<()> {
+    fn test_stroke_one_moving_start() -> Result<()> {
         let sks = pts_to_sks_1_min(vec![
             new_pt1("2020-01-07 10:00", 10.00, false),
             new_pt1("2020-01-07 10:02", 10.10, true),
@@ -300,7 +503,7 @@ mod tests {
 
     // 一笔，起点不一定，因为起点是最低的底分型
     #[test]
-    fn test_shaper_one_stroke_non_moving_start() -> Result<()> {
+    fn test_stroke_one_non_moving_start() -> Result<()> {
         let sks = pts_to_sks_1_min(vec![
             new_pt1("2020-01-07 10:00", 10.00, false),
             new_pt1("2020-01-07 10:02", 10.10, true),
@@ -315,7 +518,7 @@ mod tests {
 
     // 简单的两笔
     #[test]
-    fn test_shaper_two_strokes_simple() -> Result<()> {
+    fn test_stroke_two_simple() -> Result<()> {
         let sks = pts_to_sks_1_min(vec![
             new_pt1("2020-01-07 10:00", 10.00, false),
             new_pt1("2020-01-07 10:10", 10.10, true),
@@ -327,7 +530,7 @@ mod tests {
 
     // 一笔，分型跨天
     #[test]
-    fn test_shaper_one_stroke_across_days() -> Result<()> {
+    fn test_stroke_one_across_days() -> Result<()> {
         let sks = pts_to_sks_30_min(vec![
             new_pt30("2020-01-07 10:00", 10.00, true),
             new_pt30("2020-01-08 10:00", 9.50, false),
@@ -342,7 +545,7 @@ mod tests {
     // 1. 后底低于前底
     // 2. K线包含
     #[test]
-    fn test_shaper_one_complex_stroke_across_days() -> Result<()> {
+    fn test_stroke_one_complex_across_days() -> Result<()> {
         let sks = pts_to_sks_30_min(vec![
             ts_pt30(
                 "2020-03-11 13:30",
@@ -403,7 +606,7 @@ mod tests {
     // 三笔，2020.2.10 ~ 2020.2.14 贵州茅台
     // todo
     #[test]
-    fn test_shaper_three_strokes() -> Result<()> {
+    fn test_stroke_three() -> Result<()> {
         let pts = vec![
             ts_pt30(
                 "2020-02-10 11:00",
@@ -505,34 +708,25 @@ mod tests {
             ),
         ];
         // 不回溯
-        let sks1 = pts_to_sks(&pts, &*LOCAL_TS_30_MIN)?;
+        let sks1 = pts_to_sks(
+            &pts,
+            "30m",
+            StrokeConfig {
+                indep_k: true,
+                judge: StrokeJudge::None,
+            },
+        )?;
         assert_eq!(3, sks1.len());
         assert_eq!(new_ts("2020-02-10 11:00"), sks1[0].start_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-10 15:00"), sks1[0].end_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-11 14:00"), sks1[1].end_pt.extremum_ts);
         assert_eq!(new_ts("2020-02-14 14:30"), sks1[2].end_pt.extremum_ts);
-        // 回溯，差值1%
-        let sks2 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_30_MIN,
-            StrokeConfig {
-                indep_k: true,
-                judge: StrokeJudge::None,
-                backtrack: StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap()),
-            },
-        )
-        .run()?;
-        assert_eq!(3, sks1.len());
-        assert_eq!(new_ts("2020-02-10 11:00"), sks2[0].start_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-10 15:00"), sks2[0].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-13 10:00"), sks2[1].end_pt.extremum_ts);
-        assert_eq!(new_ts("2020-02-14 14:30"), sks2[2].end_pt.extremum_ts);
         Ok(())
     }
 
     // 测试不同的成笔逻辑选项
     #[test]
-    fn test_shaper_one_stroke_gap() -> Result<()> {
+    fn test_stroke_one_gap() -> Result<()> {
         let mut pt1 = new_pt30("2020-02-13 15:00", 10.00, false);
         pt1.right_gap = Some(Box::new(Gap {
             ts: new_ts("2020-02-14 10:00"),
@@ -546,118 +740,76 @@ mod tests {
             end_price: BigDecimal::from(10.50),
         }));
         let pts = vec![pt1, pt2];
-        let sks1 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_30_MIN,
+        let sks1 = StrokeAccumulator::new(
+            "30m",
             StrokeConfig {
                 indep_k: true,
                 judge: StrokeJudge::None,
-                backtrack: StrokeBacktrack::None,
             },
-        )
-        .run()
+        )?
+        .aggregate(&pts)
         .unwrap();
         assert_eq!(0, sks1.len());
-        let sks2 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_30_MIN,
+        let sks2 = StrokeAccumulator::new(
+            "30m",
             StrokeConfig {
                 indep_k: false,
                 judge: StrokeJudge::None,
-                backtrack: StrokeBacktrack::None,
             },
-        )
-        .run()
+        )?
+        .aggregate(&pts)
         .unwrap();
         assert_eq!(0, sks2.len());
-        let sks3 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_30_MIN,
+        let sks3 = StrokeAccumulator::new(
+            "30m",
             StrokeConfig {
                 indep_k: true,
                 judge: StrokeJudge::GapOpening(false),
-                backtrack: StrokeBacktrack::None,
             },
-        )
-        .run()
+        )?
+        .aggregate(&pts)
         .unwrap();
         assert_eq!(1, sks3.len());
-        let sks4 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_30_MIN,
+        let sks4 = StrokeAccumulator::new(
+            "30m",
             StrokeConfig {
                 indep_k: true,
                 judge: StrokeJudge::GapRatio(BigDecimal::from(0.01)),
-                backtrack: StrokeBacktrack::None,
             },
-        )
-        .run()
+        )?
+        .aggregate(&pts)
         .unwrap();
         assert_eq!(1, sks4.len());
-        let sks5 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_30_MIN,
+        let sks5 = StrokeAccumulator::new(
+            "30m",
             StrokeConfig {
                 indep_k: true,
                 judge: StrokeJudge::GapRatio(BigDecimal::from(0.08)),
-                backtrack: StrokeBacktrack::None,
             },
-        )
-        .run()
+        )?
+        .aggregate(&pts)
         .unwrap();
         assert_eq!(0, sks5.len());
         Ok(())
     }
 
-    #[test]
-    fn test_shaper_stroke_backtrack() -> Result<()> {
-        let pts = vec![
-            new_pt1("2020-03-30 09:40", 9.90, false),
-            new_pt1("2020-03-30 09:50", 10.00, true),
-            new_pt1("2020-03-30 10:00", 9.95, false),
-            new_pt1("2020-03-30 10:01", 10.15, true),
-        ];
-        // 不开启回溯
-        let sks1 = pts_to_sks(&pts, &*LOCAL_TS_1_MIN)?;
-        assert_eq!(2, sks1.len());
-        assert_eq!(new_ts("2020-03-30 10:00"), sks1[1].end_pt.extremum_ts);
-        // 开启回溯，价差为1%
-        let sks2 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_1_MIN,
-            StrokeConfig {
-                indep_k: true,
-                judge: StrokeJudge::None,
-                backtrack: StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap()),
-            },
-        )
-        .run()?;
-        assert_eq!(1, sks2.len());
-        assert_eq!(new_ts("2020-03-30 10:01"), sks2[0].end_pt.extremum_ts);
-        // 开启回溯，价差为3%
-        let sks3 = StrokeShaper::new(
-            &pts,
-            &*LOCAL_TS_1_MIN,
-            StrokeConfig {
-                indep_k: true,
-                judge: StrokeJudge::None,
-                backtrack: StrokeBacktrack::Diff(BigDecimal::from_str("0.03").unwrap()),
-            },
-        )
-        .run()?;
-        assert_eq!(2, sks3.len());
-        assert_eq!(new_ts("2020-03-30 10:00"), sks3[1].end_pt.extremum_ts);
-        Ok(())
+    fn pts_to_sks_1_min(pts: Vec<Parting>) -> Vec<Stroke> {
+        pts_to_sks(&pts, "1m", StrokeConfig::default()).unwrap()
     }
 
-    fn pts_to_sks_1_min(pts: Vec<Parting>) -> Vec<Stroke> {
-        pts_to_sks(&pts, &*LOCAL_TS_1_MIN).unwrap()
+    fn pds_to_sds_1_min(pds: Vec<PartingDelta>) -> Vec<StrokeDelta> {
+        StrokeAccumulator::new("1m", StrokeConfig::default())
+            .unwrap()
+            .delta_agg()
+            .aggregate(&pds)
+            .unwrap()
     }
 
     fn new_pt1(ts: &str, price: f64, top: bool) -> Parting {
+        let ts1m = LocalTradingTimestamps::new("1m").unwrap();
         let extremum_ts = new_ts(ts);
-        let start_ts = LOCAL_TS_1_MIN.prev_tick(extremum_ts).unwrap();
-        let end_ts = LOCAL_TS_1_MIN.next_tick(extremum_ts).unwrap();
+        let start_ts = ts1m.prev_tick(extremum_ts).unwrap();
+        let end_ts = ts1m.next_tick(extremum_ts).unwrap();
         Parting {
             start_ts,
             extremum_ts,
@@ -671,13 +823,14 @@ mod tests {
     }
 
     fn pts_to_sks_30_min(pts: Vec<Parting>) -> Vec<Stroke> {
-        pts_to_sks(&pts, &*LOCAL_TS_30_MIN).unwrap()
+        pts_to_sks(&pts, "30m", StrokeConfig::default()).unwrap()
     }
 
     fn new_pt30(ts: &str, price: f64, top: bool) -> Parting {
+        let ts30m = LocalTradingTimestamps::new("30m").unwrap();
         let extremum_ts = new_ts(ts);
-        let start_ts = LOCAL_TS_30_MIN.prev_tick(extremum_ts).unwrap();
-        let end_ts = LOCAL_TS_30_MIN.next_tick(extremum_ts).unwrap();
+        let start_ts = ts30m.prev_tick(extremum_ts).unwrap();
+        let end_ts = ts30m.next_tick(extremum_ts).unwrap();
         Parting {
             start_ts,
             extremum_ts,
@@ -696,7 +849,7 @@ mod tests {
         let extremum_ts = new_ts(ts);
         let mut start = start_ts;
         let mut n = 1;
-        while let Some(next_ts) = LOCAL_TS_30_MIN.next_tick(start) {
+        while let Some(next_ts) = LocalTradingTimestamps::new("30m").unwrap().next_tick(start) {
             n += 1;
             if next_ts == end_ts {
                 break;

@@ -159,33 +159,34 @@ impl Standard {
         let center_data = &subtrends[tmp_center.start_idx..=tmp_center.end_idx];
         // 仅以前三段获取中枢区间
         let prev_center = center(center_data).expect("center created from subtrends");
-        if tmp_center.extended_subtrends == 0 {
-            if let Some(_) = center(&subtrends[tmp_center.start_idx + 1..=idx]) {
-                // 当前段和中枢起始段相比，是否更靠近中枢区间
-                let subtrend0 = &subtrends[tmp_center.start_idx];
-                if !tmp_center.fixed {
-                    let mid = (&prev_center.shared_high.value + &prev_center.shared_low.value) / 2;
-                    let diff0 = abs_diff(&subtrend0.start.value, &mid)
-                        + abs_diff(&subtrend0.end.value, &mid);
-                    let diff =
-                        abs_diff(&subtrend.start.value, &mid) + abs_diff(&subtrend.end.value, &mid);
-                    if diff < diff0 {
-                        // 中枢迁移
-                        self.remove_lastn(1);
-                        self.push_subtrend(tmp_center.start_idx, false);
-                        // 移动一次后不允许再次移动
-                        let tc = TemporaryCenter {
-                            start_idx: tmp_center.end_idx - 1,
-                            end_idx: idx,
-                            extended_subtrends: 0,
-                            fixed: true,
-                        };
-                        self.push_center(tc);
-                        return;
-                    }
+        if tmp_center.extended_subtrends == 0
+            && center(&subtrends[tmp_center.start_idx + 1..=idx]).is_some()
+        {
+            // 当前段和中枢起始段相比，是否更靠近中枢区间
+            let subtrend0 = &subtrends[tmp_center.start_idx];
+            if !tmp_center.fixed {
+                let mid = (&prev_center.shared_high.value + &prev_center.shared_low.value) / 2;
+                let diff0 =
+                    abs_diff(&subtrend0.start.value, &mid) + abs_diff(&subtrend0.end.value, &mid);
+                let diff =
+                    abs_diff(&subtrend.start.value, &mid) + abs_diff(&subtrend.end.value, &mid);
+                if diff < diff0 {
+                    // 中枢迁移
+                    self.remove_lastn(1);
+                    self.push_subtrend(tmp_center.start_idx, false);
+                    // 移动一次后不允许再次移动
+                    let tc = TemporaryCenter {
+                        start_idx: tmp_center.end_idx - 1,
+                        end_idx: idx,
+                        extended_subtrends: 0,
+                        fixed: true,
+                    };
+                    self.push_center(tc);
+                    return;
                 }
             }
         }
+
         if prev_center.contains_price(&subtrend.start.value) {
             if prev_center.contains_price(&subtrend.end.value) {
                 // case 1
@@ -198,21 +199,19 @@ impl Standard {
                     tc.extended_subtrends = idx - tc.end_idx;
                 });
             }
+        } else if prev_center.contains_price(&subtrend.end.value) {
+            // case 3
+            self.modify_last_center(|tc| {
+                tc.extended_subtrends = idx - tc.end_idx;
+            })
+        } else if !prev_center.split_prices(&subtrend.start.value, &subtrend.end.value) {
+            // case 4
+            self.push_subtrend(idx, true);
         } else {
-            if prev_center.contains_price(&subtrend.end.value) {
-                // case 3
-                self.modify_last_center(|tc| {
-                    tc.extended_subtrends = idx - tc.end_idx;
-                })
-            } else if !prev_center.split_prices(&subtrend.start.value, &subtrend.end.value) {
-                // case 4
-                self.push_subtrend(idx, true);
-            } else {
-                // case 5
-                self.modify_last_center(|tc| {
-                    tc.extended_subtrends = idx - tc.end_idx;
-                });
-            }
+            // case 5
+            self.modify_last_center(|tc| {
+                tc.extended_subtrends = idx - tc.end_idx;
+            });
         }
     }
 
@@ -356,7 +355,7 @@ impl Standard {
         let st1_idx = st2_idx - 1;
         let subtrend1 = &subtrends[st1_idx];
         let subtrend2 = &subtrends[st2_idx];
-        if let Some(_) = center3(subtrend1, subtrend2, subtrend) {
+        if center3(subtrend1, subtrend2, subtrend).is_some() {
             if tmp_sc.extended_subtrends >= 2 {
                 // case 1-a
                 self.modify_last_semicenter(|sc| {

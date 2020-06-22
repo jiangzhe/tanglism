@@ -5,11 +5,10 @@ use chrono::NaiveDateTime;
 use serde_derive::*;
 use std::str::FromStr;
 use tanglism_morph::{
-    ks_to_pts, sks_to_sgs, trend_as_subtrend, unify_centers, unify_subtrends, unify_trends,
-    StrokeBacktrack, StrokeConfig, StrokeJudge, StrokeShaper, TrendConfig, K,
+    ks_to_pts, pts_to_sks, sks_to_sgs, trend_as_subtrend, unify_centers, unify_subtrends,
+    unify_trends, StrokeConfig, StrokeJudge, TrendConfig, K,
 };
 use tanglism_morph::{CenterElement, Parting, Segment, Stroke, SubTrend, Trend};
-use tanglism_utils::{LOCAL_DATES, LOCAL_TS_1_MIN, LOCAL_TS_30_MIN, LOCAL_TS_5_MIN};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response<T> {
@@ -48,19 +47,7 @@ pub fn get_tanglism_strokes(
     tick: &str,
     stroke_cfg: StrokeConfig,
 ) -> Result<Vec<Stroke>> {
-    let data = match tick {
-        "1m" => StrokeShaper::new(&pts, &*LOCAL_TS_1_MIN, stroke_cfg).run()?,
-        "5m" => StrokeShaper::new(&pts, &*LOCAL_TS_5_MIN, stroke_cfg).run()?,
-        "30m" => StrokeShaper::new(&pts, &*LOCAL_TS_30_MIN, stroke_cfg).run()?,
-        "1d" => StrokeShaper::new(&pts, &**LOCAL_DATES, stroke_cfg).run()?,
-        _ => {
-            return Err(Error::custom(
-                ErrorKind::BadRequest,
-                format!("invalid tick: {}", &tick),
-            ))
-        }
-    };
-    Ok(data)
+    pts_to_sks(pts, tick, stroke_cfg).map_err(Into::into)
 }
 
 pub fn get_tanglism_segments(sks: &[Stroke]) -> Result<Vec<Segment>> {
@@ -90,9 +77,9 @@ pub fn get_tanglism_subtrends(
         let centers = unify_centers(&subtrends);
         let trends = unify_trends(&centers);
         subtrends.clear();
-        for i in 0..trends.len() {
+        for tr in &trends {
             subtrends.push(trend_as_subtrend(
-                &trends[i],
+                tr,
                 if lv == level { tick } else { "1m" },
             )?);
         }
@@ -115,7 +102,6 @@ pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
     let cfg_strs: Vec<&str> = s.split(',').collect();
     let mut indep_k = true;
     let mut judge = StrokeJudge::None;
-    let mut backtrack = StrokeBacktrack::None;
     for c in &cfg_strs {
         if c.starts_with("indep_k") {
             let is: Vec<&str> = c.split(':').collect();
@@ -142,26 +128,9 @@ pub fn parse_stroke_cfg(s: &str) -> Result<StrokeConfig> {
                 })?;
                 judge = StrokeJudge::GapRatio(ratio);
             }
-        } else if c.starts_with("backtrack") {
-            let bs: Vec<&str> = c.split(':').collect();
-            if bs.len() < 2 {
-                backtrack = StrokeBacktrack::Diff(BigDecimal::from_str("0.01").unwrap());
-            } else {
-                let diff = BigDecimal::from_str(bs[1]).map_err(|_| {
-                    Error::custom(
-                        ErrorKind::BadRequest,
-                        format!("invalid backtrack diff ratio: {}", bs[1]),
-                    )
-                })?;
-                backtrack = StrokeBacktrack::Diff(diff);
-            }
         }
     }
-    Ok(StrokeConfig {
-        indep_k,
-        judge,
-        backtrack,
-    })
+    Ok(StrokeConfig { indep_k, judge })
 }
 
 pub fn parse_trend_cfg(s: &str) -> Result<TrendConfig> {

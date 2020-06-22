@@ -2,6 +2,7 @@ use super::Metric;
 use bigdecimal::BigDecimal;
 use chrono::NaiveDateTime;
 
+#[allow(dead_code)]
 pub fn ma<D, P, T>(raw: &[D], period: usize, pf: P, tf: T) -> Vec<Metric>
 where
     P: Fn(&D) -> BigDecimal,
