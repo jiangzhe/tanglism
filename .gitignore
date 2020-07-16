@@ -27,3 +27,7 @@ web/data/
 
 # hide env files in commits
 .env
+
+# not upload code coverage reports
+cobertura.xml
+
